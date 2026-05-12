@@ -1,16 +1,23 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Car, Users, ToggleLeft, ToggleRight } from 'lucide-react';
+import { Car, Users, LogOut } from 'lucide-react';
 import { useAppContext } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
+import { toast } from 'sonner';
 
 export const Header: React.FC = () => {
   const { state, dispatch } = useAppContext();
+  const { user, isVendor, isAdmin, signOut } = useAuth();
+  const canBeVendor = isVendor || isAdmin;
 
   const toggleViewMode = () => {
     const newMode = state.viewMode === 'customer' ? 'vendor' : 'customer';
+    if (newMode === 'vendor' && !canBeVendor) {
+      toast.error('Your account is not registered as a vendor.');
+      return;
+    }
     dispatch({ type: 'SET_VIEW_MODE', payload: newMode });
-    console.log('Switched to', newMode, 'view');
   };
 
   return (
@@ -27,8 +34,9 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* View Mode Toggle */}
+        {/* Right side */}
         <div className="flex items-center space-x-4">
+          {canBeVendor && (
           <div className="flex items-center space-x-3 bg-secondary-100 rounded-full p-1">
             <Button
               variant={state.viewMode === 'customer' ? 'default' : 'ghost'}
@@ -57,20 +65,16 @@ export const Header: React.FC = () => {
               Vendor
             </Button>
           </div>
+          )}
 
-          {/* Toggle Icon */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={toggleViewMode}
-            className="p-2 hover:bg-secondary-100 transition-colors"
-          >
-            {state.viewMode === 'customer' ? (
-              <ToggleLeft className="w-5 h-5 text-secondary-600" />
-            ) : (
-              <ToggleRight className="w-5 h-5 text-primary-600" />
-            )}
-          </Button>
+          {user && (
+            <>
+              <span className="text-sm text-secondary-600 hidden sm:inline">{user.email}</span>
+              <Button variant="ghost" size="sm" onClick={() => signOut()}>
+                <LogOut className="w-4 h-4 mr-2" /> Sign out
+              </Button>
+            </>
+          )}
         </div>
       </div>
     </header>
