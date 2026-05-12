@@ -49,7 +49,10 @@ const Auth: React.FC = () => {
 
   const onSignIn = async (values: z.infer<typeof signInSchema>) => {
     setSubmitting(true);
-    const { error } = await supabase.auth.signInWithPassword(values);
+    const { error } = await supabase.auth.signInWithPassword({
+      email: values.email,
+      password: values.password,
+    });
     setSubmitting(false);
     if (error) {
       toast.error(error.message);
