@@ -1,13 +1,29 @@
-// Update this page (the content is just a fallback if you fail to update the page)
 
-const Index = () => {
+import React from 'react';
+import { AppProvider } from '@/context/AppContext';
+import { Header } from '@/components/layout/Header';
+import { CustomerView } from '@/components/customer/CustomerView';
+import { VendorView } from '@/components/vendor/VendorView';
+import { useAppContext } from '@/context/AppContext';
+
+const AppContent: React.FC = () => {
+  const { state } = useAppContext();
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
-      <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
-      </div>
+    <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-white to-primary-50">
+      <Header />
+      <main className="container mx-auto px-4 py-8">
+        {state.viewMode === 'customer' ? <CustomerView /> : <VendorView />}
+      </main>
     </div>
+  );
+};
+
+const Index: React.FC = () => {
+  return (
+    <AppProvider>
+      <AppContent />
+    </AppProvider>
   );
 };
 
