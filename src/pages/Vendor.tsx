@@ -1,17 +1,17 @@
 import React from 'react';
 import { AppProvider } from '@/context/AppContext';
 import { Header } from '@/components/layout/Header';
-import { CustomerView } from '@/components/customer/CustomerView';
+import { VendorView } from '@/components/vendor/VendorView';
 
-const Index: React.FC = () => (
+const VendorPage: React.FC = () => (
   <AppProvider>
     <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-white to-primary-50">
       <Header />
       <main className="container mx-auto px-4 py-8">
-        <CustomerView />
+        <VendorView />
       </main>
     </div>
   </AppProvider>
 );
 
-export default Index;
+export default VendorPage;

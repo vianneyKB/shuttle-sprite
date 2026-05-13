@@ -239,6 +239,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_booking_price: {
+        Args: {
+          _days_of_week_count: number
+          _duration: number
+          _stop_count: number
+          _vehicle_id: string
+        }
+        Returns: Json
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

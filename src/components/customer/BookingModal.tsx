@@ -1,121 +1,141 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { useAppContext } from '@/context/AppContext';
-import { useBookingCalculator } from '@/hooks/useBookingCalculator';
+import { useCreateBooking, useCalculatePrice } from '@/hooks/useBookings';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { X, MapPin, Plus, Minus, Calendar, Clock } from 'lucide-react';
+import { X, MapPin, Plus, Minus, Loader2 } from 'lucide-react';
 import { BookingStop } from '@/types';
+import { toast } from 'sonner';
+
+const bookingSchema = z.object({
+  customerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
+  customerEmail: z.string().trim().email('Invalid email address').max(255),
+  customerPhone: z.string().trim().min(7, 'Enter a valid phone number').max(30),
+  passengers: z.coerce.number().int().min(1, 'At least 1 passenger').max(100),
+  startDate: z.string().min(1, 'Date is required'),
+  time: z.string().min(1, 'Time is required'),
+  duration: z.coerce.number().min(1, 'At least 1 hour').max(24, 'Max 24 hours'),
+  specialRequests: z.string().max(1000).optional(),
+});
+
+type BookingFormValues = z.infer<typeof bookingSchema>;
 
 export const BookingModal: React.FC = () => {
   const { state, dispatch } = useAppContext();
-  const { calculatePrice } = useBookingCalculator();
-  const [customerName, setCustomerName] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [passengers, setPassengers] = useState(1);
+  const createBooking = useCreateBooking();
+  const calcPrice = useCalculatePrice();
   const [stops, setStops] = useState<BookingStop[]>([
     { id: '1', address: '', type: 'pickup', order: 0 },
-    { id: '2', address: '', type: 'dropoff', order: 1 }
+    { id: '2', address: '', type: 'dropoff', order: 1 },
   ]);
-  const [startDate, setStartDate] = useState('');
-  const [time, setTime] = useState('');
-  const [duration, setDuration] = useState(2);
-  const [specialRequests, setSpecialRequests] = useState('');
+  const [stopErrors, setStopErrors] = useState<Record<string, string>>({});
+
+  const form = useForm<BookingFormValues>({
+    resolver: zodResolver(bookingSchema),
+    defaultValues: {
+      customerName: '',
+      customerEmail: '',
+      customerPhone: '',
+      passengers: 1,
+      startDate: '',
+      time: '',
+      duration: 2,
+      specialRequests: '',
+    },
+  });
+
+  const duration = form.watch('duration');
+
+  // Recompute price server-side whenever duration / stops change
+  useEffect(() => {
+    if (!state.selectedVehicle) return;
+    const d = Number(duration);
+    if (!d || d <= 0) return;
+    calcPrice.mutate({
+      vehicleId: state.selectedVehicle.id,
+      duration: d,
+      stopCount: stops.length,
+      daysOfWeekCount: 0,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [duration, stops.length, state.selectedVehicle?.id]);
 
   const addStop = () => {
-    const newStop: BookingStop = {
-      id: Date.now().toString(),
-      address: '',
-      type: 'stop',
-      order: stops.length - 1
-    };
-    const updatedStops = [...stops];
-    updatedStops.splice(-1, 0, newStop);
-    updatedStops.forEach((stop, index) => {
-      stop.order = index;
-    });
-    setStops(updatedStops);
+    const newStop: BookingStop = { id: Date.now().toString(), address: '', type: 'stop', order: stops.length - 1 };
+    const updated = [...stops];
+    updated.splice(-1, 0, newStop);
+    updated.forEach((s, i) => (s.order = i));
+    setStops(updated);
   };
 
   const removeStop = (id: string) => {
     if (stops.length <= 2) return;
-    const updatedStops = stops.filter(stop => stop.id !== id);
-    updatedStops.forEach((stop, index) => {
-      stop.order = index;
-    });
-    setStops(updatedStops);
+    const updated = stops.filter(s => s.id !== id).map((s, i) => ({ ...s, order: i }));
+    setStops(updated);
   };
 
   const updateStopAddress = (id: string, address: string) => {
-    setStops(stops.map(stop => 
-      stop.id === id ? { ...stop, address } : stop
-    ));
+    setStops(stops.map(s => (s.id === id ? { ...s, address } : s)));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!state.selectedVehicle) return;
-
-    // Calculate price breakdown using the hook
-    const priceBreakdown = calculatePrice(
-      state.selectedVehicle.pricePerHour,
-      duration,
-      stops,
-      [] // No recurring days for now
-    );
-
-    const booking = {
-      id: Date.now().toString(),
-      vehicleId: state.selectedVehicle.id,
-      customerName,
-      customerEmail,
-      customerPhone,
-      passengers,
-      stops,
-      startDate,
-      time,
-      duration,
-      totalPrice: priceBreakdown.finalTotal,
-      basePriceBreakdown: priceBreakdown,
-      status: 'pending' as const,
-      specialRequests,
-      isRecurring: false,
-      daysOfWeek: [],
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-
-    dispatch({ type: 'ADD_BOOKING', payload: booking });
-    dispatch({ type: 'TOGGLE_BOOKING_MODAL' });
-    
-    // Reset form
-    setCustomerName('');
-    setCustomerEmail('');
-    setCustomerPhone('');
-    setPassengers(1);
+  const close = () => {
+    form.reset();
     setStops([
       { id: '1', address: '', type: 'pickup', order: 0 },
-      { id: '2', address: '', type: 'dropoff', order: 1 }
+      { id: '2', address: '', type: 'dropoff', order: 1 },
     ]);
-    setStartDate('');
-    setTime('');
-    setDuration(2);
-    setSpecialRequests('');
+    dispatch({ type: 'TOGGLE_BOOKING_MODAL' });
+    dispatch({ type: 'SET_SELECTED_VEHICLE', payload: null });
+  };
+
+  const onSubmit = async (values: BookingFormValues) => {
+    if (!state.selectedVehicle) return;
+
+    const errs: Record<string, string> = {};
+    stops.forEach(s => {
+      if (!s.address.trim()) errs[s.id] = 'Address is required';
+    });
+    if (Object.keys(errs).length > 0) {
+      setStopErrors(errs);
+      return;
+    }
+    setStopErrors({});
+
+    if (values.passengers > state.selectedVehicle.capacity) {
+      form.setError('passengers', {
+        message: `Max capacity is ${state.selectedVehicle.capacity}`,
+      });
+      return;
+    }
+
+    try {
+      await createBooking.mutateAsync({
+        vehicleId: state.selectedVehicle.id,
+        customerName: values.customerName,
+        customerEmail: values.customerEmail,
+        customerPhone: values.customerPhone,
+        passengers: values.passengers,
+        stops,
+        startDate: values.startDate,
+        time: values.time,
+        duration: values.duration,
+        specialRequests: values.specialRequests,
+      });
+      toast.success('Booking created successfully');
+      close();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'Failed to create booking');
+    }
   };
 
   if (!state.showBookingModal || !state.selectedVehicle) return null;
 
-  // Calculate price breakdown for display
-  const priceBreakdown = calculatePrice(
-    state.selectedVehicle.pricePerHour,
-    duration,
-    stops,
-    []
-  );
+  const breakdown = calcPrice.data;
 
   return (
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
@@ -123,185 +143,145 @@ export const BookingModal: React.FC = () => {
         <div className="p-6 border-b border-secondary-200">
           <div className="flex justify-between items-center">
             <h2 className="text-2xl font-bold text-secondary-900">Book Your Ride</h2>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => dispatch({ type: 'TOGGLE_BOOKING_MODAL' })}
-            >
-              <X className="w-5 h-5" />
-            </Button>
+            <Button variant="ghost" size="sm" onClick={close}><X className="w-5 h-5" /></Button>
           </div>
           <p className="text-secondary-600 mt-2">
             {state.selectedVehicle.year} {state.selectedVehicle.make} {state.selectedVehicle.model}
           </p>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Customer Information */}
+        <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-6">
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-secondary-900">Contact Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="name">Full Name</Label>
-                <Input
-                  id="name"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  required
-                />
+                <Input id="name" {...form.register('customerName')} />
+                {form.formState.errors.customerName && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerName.message}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={customerEmail}
-                  onChange={(e) => setCustomerEmail(e.target.value)}
-                  required
-                />
+                <Input id="email" type="email" {...form.register('customerEmail')} />
+                {form.formState.errors.customerEmail && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerEmail.message}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="phone">Phone Number</Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  required
-                />
+                <Input id="phone" type="tel" {...form.register('customerPhone')} />
+                {form.formState.errors.customerPhone && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerPhone.message}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="passengers">Number of Passengers</Label>
-                <Input
-                  id="passengers"
-                  type="number"
-                  min="1"
-                  max={state.selectedVehicle.capacity}
-                  value={passengers}
-                  onChange={(e) => setPassengers(parseInt(e.target.value))}
-                  required
-                />
+                <Input id="passengers" type="number" min={1} max={state.selectedVehicle.capacity}
+                  {...form.register('passengers')} />
+                {form.formState.errors.passengers && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.passengers.message}</p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Trip Details */}
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-secondary-900">Trip Details</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <Label htmlFor="date">Date</Label>
-                <Input
-                  id="date"
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  required
-                />
+                <Input id="date" type="date" {...form.register('startDate')} />
+                {form.formState.errors.startDate && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.startDate.message}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="time">Time</Label>
-                <Input
-                  id="time"
-                  type="time"
-                  value={time}
-                  onChange={(e) => setTime(e.target.value)}
-                  required
-                />
+                <Input id="time" type="time" {...form.register('time')} />
+                {form.formState.errors.time && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.time.message}</p>
+                )}
               </div>
               <div>
                 <Label htmlFor="duration">Duration (hours)</Label>
-                <Input
-                  id="duration"
-                  type="number"
-                  min="1"
-                  max="24"
-                  value={duration}
-                  onChange={(e) => setDuration(parseInt(e.target.value))}
-                  required
-                />
+                <Input id="duration" type="number" min={1} max={24} {...form.register('duration')} />
+                {form.formState.errors.duration && (
+                  <p className="text-sm text-red-600 mt-1">{form.formState.errors.duration.message}</p>
+                )}
               </div>
             </div>
           </div>
 
-          {/* Stops */}
           <div className="space-y-4">
             <div className="flex justify-between items-center">
               <h3 className="text-lg font-semibold text-secondary-900">Stops</h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={addStop}
-              >
-                <Plus className="w-4 h-4 mr-2" />
-                Add Stop
+              <Button type="button" variant="outline" size="sm" onClick={addStop}>
+                <Plus className="w-4 h-4 mr-2" /> Add Stop
               </Button>
             </div>
-            
             <div className="space-y-3">
-              {stops.map((stop, index) => (
-                <div key={stop.id} className="flex items-center space-x-3">
-                  <div className="flex-shrink-0">
+              {stops.map((stop) => (
+                <div key={stop.id}>
+                  <div className="flex items-center space-x-3">
                     <MapPin className="w-5 h-5 text-primary-600" />
+                    <div className="flex-1">
+                      <Input
+                        placeholder={`${stop.type === 'pickup' ? 'Pickup' : stop.type === 'dropoff' ? 'Drop-off' : 'Stop'} address`}
+                        value={stop.address}
+                        onChange={(e) => updateStopAddress(stop.id, e.target.value)}
+                      />
+                    </div>
+                    {stops.length > 2 && stop.type === 'stop' && (
+                      <Button type="button" variant="ghost" size="sm" onClick={() => removeStop(stop.id)}>
+                        <Minus className="w-4 h-4" />
+                      </Button>
+                    )}
                   </div>
-                  <div className="flex-1">
-                    <Input
-                      placeholder={`${stop.type === 'pickup' ? 'Pickup' : stop.type === 'dropoff' ? 'Drop-off' : 'Stop'} address`}
-                      value={stop.address}
-                      onChange={(e) => updateStopAddress(stop.id, e.target.value)}
-                      required
-                    />
-                  </div>
-                  {stops.length > 2 && stop.type === 'stop' && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => removeStop(stop.id)}
-                    >
-                      <Minus className="w-4 h-4" />
-                    </Button>
+                  {stopErrors[stop.id] && (
+                    <p className="text-sm text-red-600 mt-1 ml-8">{stopErrors[stop.id]}</p>
                   )}
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Special Requests */}
           <div>
             <Label htmlFor="requests">Special Requests (Optional)</Label>
-            <Textarea
-              id="requests"
-              placeholder="Any special requirements or notes..."
-              value={specialRequests}
-              onChange={(e) => setSpecialRequests(e.target.value)}
-            />
+            <Textarea id="requests" placeholder="Any special requirements or notes..." {...form.register('specialRequests')} />
+            {form.formState.errors.specialRequests && (
+              <p className="text-sm text-red-600 mt-1">{form.formState.errors.specialRequests.message}</p>
+            )}
           </div>
 
-          {/* Pricing Summary */}
           <div className="bg-primary-50 rounded-xl p-4">
             <h4 className="font-semibold text-secondary-900 mb-2">Pricing Summary</h4>
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span>Base Rate ({duration} hours × ${priceBreakdown.hourlyRate})</span>
-                <span>${priceBreakdown.subtotal}</span>
-              </div>
-              {priceBreakdown.additionalStops > 0 && (
+            {calcPrice.isPending ? (
+              <div className="flex items-center text-sm text-secondary-600"><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Calculating…</div>
+            ) : breakdown ? (
+              <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Additional Stops ({priceBreakdown.additionalStops} × ${priceBreakdown.additionalStopsCost / priceBreakdown.additionalStops})</span>
-                  <span>${priceBreakdown.additionalStopsCost}</span>
+                  <span>Base Rate ({breakdown.duration}h × ${breakdown.hourlyRate})</span>
+                  <span>${breakdown.subtotal}</span>
                 </div>
-              )}
-              <div className="flex justify-between font-semibold text-lg pt-2 border-t border-primary-200">
-                <span>Total</span>
-                <span>${priceBreakdown.finalTotal}</span>
+                {breakdown.additionalStops > 0 && (
+                  <div className="flex justify-between">
+                    <span>Additional Stops ({breakdown.additionalStops})</span>
+                    <span>${breakdown.additionalStopsCost}</span>
+                  </div>
+                )}
+                <div className="flex justify-between font-semibold text-lg pt-2 border-t border-primary-200">
+                  <span>Total</span>
+                  <span>${breakdown.finalTotal}</span>
+                </div>
               </div>
-            </div>
+            ) : (
+              <p className="text-sm text-secondary-600">Enter trip details to see pricing.</p>
+            )}
           </div>
 
-          <Button type="submit" className="w-full">
-            Confirm Booking
+          <Button type="submit" className="w-full" disabled={createBooking.isPending}>
+            {createBooking.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…</> : 'Confirm Booking'}
           </Button>
         </form>
       </div>
