@@ -39,11 +39,11 @@ export const BookingManagement: React.FC = () => {
     const vehicle = vehicles.find(v => v.id === booking.vehicleId);
     return (
       <Card className="hover:shadow-elevation-md transition-shadow duration-300">
-        <CardContent className="p-6">
-          <div className="flex justify-between items-start mb-4">
-            <div className="flex-1">
-              <div className="flex items-center space-x-3 mb-2">
-                <h3 className="text-lg font-semibold text-secondary-900">{booking.customerName}</h3>
+        <CardContent className="p-4 sm:p-6">
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3 mb-4">
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <h3 className="text-base sm:text-lg font-semibold text-secondary-900">{booking.customerName}</h3>
                 <Badge className={statusColor(booking.status)}>{booking.status}</Badge>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-secondary-600">
@@ -55,8 +55,8 @@ export const BookingManagement: React.FC = () => {
                 <div className="flex items-center space-x-2"><Clock className="w-4 h-4" /><span>{booking.time} ({booking.duration}h)</span></div>
               </div>
             </div>
-            <div className="text-right ml-4">
-              <div className="text-2xl font-bold text-primary-600">${booking.totalPrice}</div>
+            <div className="text-left sm:text-right sm:ml-4 shrink-0">
+              <div className="text-xl sm:text-2xl font-bold text-primary-600">${booking.totalPrice}</div>
               <div className="text-sm text-secondary-600">Total</div>
             </div>
           </div>
@@ -78,7 +78,7 @@ export const BookingManagement: React.FC = () => {
               <p className="text-sm text-secondary-600 bg-secondary-50 p-3 rounded-lg">{booking.specialRequests}</p>
             </div>
           )}
-          <div className="flex space-x-2 pt-4 border-t border-secondary-200">
+          <div className="flex flex-wrap gap-2 pt-4 border-t border-secondary-200">
             {booking.status === 'pending' && (<>
               <Button size="sm" onClick={() => update(booking.id, 'confirmed')}>Confirm</Button>
               <Button variant="outline" size="sm" onClick={() => update(booking.id, 'cancelled')}>Decline</Button>
@@ -130,11 +130,11 @@ export const BookingManagement: React.FC = () => {
       </div>
 
       <Tabs defaultValue="pending" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="pending">Pending ({pending.length})</TabsTrigger>
-          <TabsTrigger value="confirmed">Confirmed ({confirmed.length})</TabsTrigger>
-          <TabsTrigger value="completed">Completed ({completed.length})</TabsTrigger>
-          <TabsTrigger value="cancelled">Cancelled ({cancelled.length})</TabsTrigger>
+        <TabsList className="scrollbar-thin-x w-full flex md:grid md:grid-cols-4 h-auto min-h-11 gap-1 p-1">
+          <TabsTrigger value="pending" className="shrink-0 min-h-11 px-2 sm:px-3 text-xs sm:text-sm">Pending ({pending.length})</TabsTrigger>
+          <TabsTrigger value="confirmed" className="shrink-0 min-h-11 px-2 sm:px-3 text-xs sm:text-sm">Confirmed ({confirmed.length})</TabsTrigger>
+          <TabsTrigger value="completed" className="shrink-0 min-h-11 px-2 sm:px-3 text-xs sm:text-sm">Done ({completed.length})</TabsTrigger>
+          <TabsTrigger value="cancelled" className="shrink-0 min-h-11 px-2 sm:px-3 text-xs sm:text-sm">Cancelled ({cancelled.length})</TabsTrigger>
         </TabsList>
         <div className="mt-6">
           <TabsContent value="pending" className="space-y-4">

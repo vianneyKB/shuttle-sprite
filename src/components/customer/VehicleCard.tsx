@@ -54,7 +54,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
         </div>
       </div>
 
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         <div className="space-y-4">
           {/* Vehicle Info */}
           <div>
@@ -67,14 +67,14 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
           </div>
 
           {/* Key Details */}
-          <div className="flex items-center justify-between text-sm">
-            <div className="flex items-center space-x-1 text-secondary-600">
-              <Users className="w-4 h-4" />
+          <div className="flex flex-col sm:flex-row sm:justify-between gap-2 text-sm">
+            <div className="flex items-center gap-1 text-secondary-600">
+              <Users className="w-4 h-4 shrink-0" />
               <span>{vehicle.capacity} passengers</span>
             </div>
-            <div className="flex items-center space-x-1 text-secondary-600">
-              <MapPin className="w-4 h-4" />
-              <span>{vehicle.location}</span>
+            <div className="flex items-center gap-1 text-secondary-600 min-w-0">
+              <MapPin className="w-4 h-4 shrink-0" />
+              <span className="truncate">{vehicle.location}</span>
             </div>
           </div>
 
@@ -119,7 +119,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
         </div>
       </CardContent>
 
-      <CardFooter className="p-6 pt-0">
+      <CardFooter className="p-4 sm:p-6 pt-0">
         <Button
           onClick={handleBookNow}
           disabled={!vehicle.available}

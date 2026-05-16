@@ -102,12 +102,12 @@ export const VehicleManagement: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-secondary-900">Fleet Management</h2>
-          <p className="text-secondary-600">Manage your vehicles and their availability</p>
+          <h2 className="text-xl sm:text-2xl font-bold text-secondary-900">Fleet Management</h2>
+          <p className="text-sm sm:text-base text-secondary-600">Manage your vehicles and their availability</p>
         </div>
-        <Button onClick={openAdd} className="flex items-center space-x-2">
+        <Button onClick={openAdd} className="w-full sm:w-auto min-h-11 flex items-center justify-center gap-2">
           <Plus className="w-4 h-4" /><span>Add Vehicle</span>
         </Button>
       </div>
@@ -159,8 +159,8 @@ export const VehicleManagement: React.FC = () => {
                   {v.features.slice(0, 3).map(f => <Badge key={f} variant="outline" className="text-xs">{f}</Badge>)}
                   {v.features.length > 3 && <Badge variant="outline" className="text-xs">+{v.features.length - 3} more</Badge>}
                 </div>
-                <div className="flex justify-between items-center">
-                  <div className="flex space-x-2">
+                <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3">
+                  <div className="flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" onClick={() => onToggle(v)}>
                       {v.available ? <ToggleRight className="w-4 h-4 mr-2" /> : <ToggleLeft className="w-4 h-4 mr-2" />}
                       {v.available ? 'Disable' : 'Enable'}
