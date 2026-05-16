@@ -63,11 +63,11 @@ export const VehicleList: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-2">
-          <Car className="w-5 h-5 text-primary-600" />
-          <h2 className="text-lg font-semibold text-secondary-800">Available Vehicles</h2>
-          <span className="text-sm text-secondary-500">
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
+          <Car className="w-5 h-5 text-primary-600 shrink-0" />
+          <h2 className="text-base sm:text-lg font-semibold text-secondary-800">Available Vehicles</h2>
+          <span className="text-sm text-secondary-500 shrink-0">
             ({filteredVehicles.length} {filteredVehicles.length === 1 ? 'vehicle' : 'vehicles'})
           </span>
         </div>

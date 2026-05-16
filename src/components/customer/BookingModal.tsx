@@ -138,19 +138,19 @@ export const BookingModal: React.FC = () => {
   const breakdown = calcPrice.data;
 
   return (
-    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="p-6 border-b border-secondary-200">
-          <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold text-secondary-900">Book Your Ride</h2>
-            <Button variant="ghost" size="sm" onClick={close}><X className="w-5 h-5" /></Button>
+    <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 safe-bottom">
+      <div className="bg-white rounded-t-2xl sm:rounded-2xl max-w-2xl w-full max-h-[92dvh] sm:max-h-[90vh] overflow-y-auto flex flex-col">
+        <div className="p-4 sm:p-6 border-b border-secondary-200 shrink-0 sticky top-0 bg-white z-10">
+          <div className="flex justify-between items-start gap-3">
+            <h2 className="text-xl sm:text-2xl font-bold text-secondary-900">Book Your Ride</h2>
+            <Button variant="ghost" size="icon" className="shrink-0" onClick={close} aria-label="Close"><X className="w-5 h-5" /></Button>
           </div>
-          <p className="text-secondary-600 mt-2">
+          <p className="text-secondary-600 mt-2 text-sm sm:text-base">
             {state.selectedVehicle.year} {state.selectedVehicle.make} {state.selectedVehicle.model}
           </p>
         </div>
 
-        <form onSubmit={form.handleSubmit(onSubmit)} className="p-6 space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="p-4 sm:p-6 space-y-5 sm:space-y-6 pb-6">
           <div className="space-y-4">
             <h3 className="text-lg font-semibold text-secondary-900">Contact Information</h3>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -214,18 +214,18 @@ export const BookingModal: React.FC = () => {
           </div>
 
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2">
               <h3 className="text-lg font-semibold text-secondary-900">Stops</h3>
-              <Button type="button" variant="outline" size="sm" onClick={addStop}>
+              <Button type="button" variant="outline" size="sm" className="w-full sm:w-auto min-h-11" onClick={addStop}>
                 <Plus className="w-4 h-4 mr-2" /> Add Stop
               </Button>
             </div>
             <div className="space-y-3">
               {stops.map((stop) => (
                 <div key={stop.id}>
-                  <div className="flex items-center space-x-3">
-                    <MapPin className="w-5 h-5 text-primary-600" />
-                    <div className="flex-1">
+                  <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                    <MapPin className="w-5 h-5 text-primary-600 shrink-0" />
+                    <div className="flex-1 min-w-0">
                       <Input
                         placeholder={`${stop.type === 'pickup' ? 'Pickup' : stop.type === 'dropoff' ? 'Drop-off' : 'Stop'} address`}
                         value={stop.address}
@@ -280,7 +280,7 @@ export const BookingModal: React.FC = () => {
             )}
           </div>
 
-          <Button type="submit" className="w-full" disabled={createBooking.isPending}>
+          <Button type="submit" className="w-full min-h-12 text-base sticky bottom-0" disabled={createBooking.isPending}>
             {createBooking.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating…</> : 'Confirm Booking'}
           </Button>
         </form>

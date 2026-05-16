@@ -135,7 +135,7 @@ export const VehicleSearch: React.FC = () => {
             <Badge
               key={feature}
               variant={state.filters.features.includes(feature) ? 'default' : 'outline'}
-              className={`cursor-pointer transition-all duration-200 hover:scale-105 ${
+              className={`cursor-pointer min-h-9 px-3 py-1.5 transition-all duration-200 active:scale-95 sm:hover:scale-105 ${
                 state.filters.features.includes(feature)
                   ? 'bg-primary-600 text-white border-primary-600'
                   : 'border-secondary-300 hover:border-primary-400'
@@ -150,8 +150,8 @@ export const VehicleSearch: React.FC = () => {
 
       {/* Active Filters Summary */}
       {hasActiveFilters && (
-        <div className="flex items-center justify-between p-4 bg-primary-50 rounded-lg border border-primary-200">
-          <div className="flex items-center space-x-2 text-sm text-primary-700">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 bg-primary-50 rounded-lg border border-primary-200">
+          <div className="flex items-center gap-2 text-sm text-primary-700">
             <Filter className="w-4 h-4" />
             <span>
               Showing filtered results

@@ -94,8 +94,8 @@ const Auth: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-secondary-50 via-white to-primary-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md p-8 space-y-6">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-secondary-50 via-white to-primary-50 flex items-center justify-center p-4 safe-bottom overflow-x-hidden">
+      <Card className="w-full max-w-md p-5 sm:p-8 space-y-6">
         <div className="flex items-center justify-center gap-3">
           <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">
             <Car className="w-6 h-6 text-white" />

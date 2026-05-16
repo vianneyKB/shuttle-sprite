@@ -292,3 +292,68 @@
 .status-cancelled {
   @apply bg-red-50 text-red-700 border border-red-200;
 }
+
+/* Mobile-friendly defaults */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    overflow-x: hidden;
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* Prevent iOS zoom on focus — inputs use text-base on small screens */
+  @media (max-width: 767px) {
+    input,
+    select,
+    textarea {
+      font-size: 16px !important;
+    }
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .safe-top {
+    padding-top: max(0px, env(safe-area-inset-top));
+  }
+
+  .touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  .scrollbar-thin-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .tap-highlight-none {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Bottom-sheet style modals on narrow viewports */
+@media (max-width: 639px) {
+  .modal-sheet {
+    border-radius: 1rem 1rem 0 0;
+    max-height: 92dvh;
+  }
+}
+
+/* Reduce hover lift on touch devices */
+@media (hover: none) {
+  .vehicle-card:hover,
+  .booking-card:hover {
+    transform: none;
+  }
+}

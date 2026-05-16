@@ -33,8 +33,8 @@ const ForgotPassword: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-secondary-50 via-white to-primary-50">
-      <Card className="w-full max-w-md p-8 space-y-6">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center p-4 safe-bottom overflow-x-hidden bg-gradient-to-br from-secondary-50 via-white to-primary-50">
+      <Card className="w-full max-w-md p-5 sm:p-8 space-y-6">
         <h1 className="text-2xl font-bold">Reset your password</h1>
         <p className="text-sm text-muted-foreground">
           Enter your email and we'll send you a link to set a new password.
