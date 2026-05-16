@@ -62,7 +62,7 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
               {vehicle.year} {vehicle.make} {vehicle.model}
             </h3>
             <p className="text-sm text-secondary-600 font-medium">
-              by {vehicle.vendorName}
+              by {vehicle.operatorName}
             </p>
           </div>
 

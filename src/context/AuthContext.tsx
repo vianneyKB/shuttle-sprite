@@ -2,14 +2,14 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import type { Session, User } from "@supabase/supabase-js";
 import { supabase } from "@/integrations/supabase/client";
 
-export type AppRole = "admin" | "vendor" | "customer";
+export type AppRole = "admin" | "operator" | "customer";
 
 interface AuthContextValue {
   user: User | null;
   session: Session | null;
   roles: AppRole[];
   loading: boolean;
-  isVendor: boolean;
+  isOperator: boolean;
   isAdmin: boolean;
   signOut: () => Promise<void>;
 }
@@ -23,12 +23,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up listener BEFORE getSession (per Lovable auth guidance)
     const { data: sub } = supabase.auth.onAuthStateChange((_event, newSession) => {
       setSession(newSession);
       setUser(newSession?.user ?? null);
       if (newSession?.user) {
-        // Defer Supabase calls to avoid deadlock inside the callback
         setTimeout(() => {
           void fetchRoles(newSession.user.id);
         }, 0);
@@ -74,7 +72,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     session,
     roles,
     loading,
-    isVendor: roles.includes("vendor"),
+    isOperator: roles.includes("operator"),
     isAdmin: roles.includes("admin"),
     signOut,
   };

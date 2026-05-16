@@ -56,7 +56,7 @@ export const VehicleSearch: React.FC = () => {
       <div className="relative">
         <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-secondary-400" />
         <Input
-          placeholder="Search by make, model, or vendor..."
+          placeholder="Search by make, model, or operator..."
           value={state.filters.searchQuery}
           onChange={(e) => handleSearchChange(e.target.value)}
           className="pl-10 h-12 text-base border-secondary-300 focus:border-primary-500 focus:ring-primary-500"

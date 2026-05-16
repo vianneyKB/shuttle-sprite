@@ -2,9 +2,9 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
-import VendorPage from "./pages/Vendor";
+import OperatorPage from "./pages/Operator";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -35,13 +35,14 @@ const App = () => (
               }
             />
             <Route
-              path="/vendor"
+              path="/operator"
               element={
-                <RoleRoute allow={["vendor", "admin"]}>
-                  <VendorPage />
+                <RoleRoute allow={["operator", "admin"]}>
+                  <OperatorPage />
                 </RoleRoute>
               }
             />
+            <Route path="/vendor" element={<Navigate to="/operator" replace />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </AuthProvider>
