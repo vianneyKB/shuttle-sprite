@@ -50,21 +50,21 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   if (isLoading) {
     return (
-      <motion className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 bg-secondary-50 flex items-center justify-center">
+      <Wrapper className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 bg-secondary-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
-      </div>
+      </Wrapper>
     );
   }
 
   return (
-    <motion className="space-y-3">
+    <Wrapper className="space-y-3">
       <Input
         placeholder="Filter routes or stops…"
         value={filter}
         onChange={(e) => setFilter(e.target.value)}
         className="max-w-md"
       />
-      <motion className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 overflow-hidden z-0">
+      <Wrapper className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 overflow-hidden z-0">
         <MapContainer
           center={DEFAULT_MAP_CENTER}
           zoom={DEFAULT_MAP_ZOOM}
@@ -96,7 +96,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                 {route.stops.map((stop) => (
                   <Marker key={stop.id} position={[stop.lat, stop.lng]}>
                     <Popup>
-                      <motion className="text-sm space-y-1 min-w-[140px]">
+                      <Wrapper className="text-sm space-y-1 min-w-[140px]">
                         <p className="font-semibold">{stop.name}</p>
                         <p className="text-secondary-600">{route.name}</p>
                         {route.operatingHours && (
@@ -111,7 +111,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
                             Request ride from here
                           </button>
                         )}
-                      </div>
+                      </Wrapper>
                     </Popup>
                   </Marker>
                 ))}
@@ -119,10 +119,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
             );
           })}
         </MapContainer>
-      </div>
+      </Wrapper>
       {filtered.length === 0 && (
         <p className="text-sm text-secondary-600 text-center py-2">No routes match your search.</p>
       )}
-    </div>
+    </Wrapper>
   );
 };
+
+const Wrapper = ({ className, children }: { className?: string; children?: React.ReactNode }) => (
+  <section className={className}>{children}</section>
+);

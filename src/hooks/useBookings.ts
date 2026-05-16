@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { Booking, BookingStatus, BookingStop } from "@/types";
+import type { Booking, BookingStatus, BookingStop, PaymentMethod } from "@/types";
 
 type DbBooking = {
   id: string;
@@ -17,10 +17,12 @@ type DbBooking = {
   time: string;
   duration: number;
   total_price: number;
-  price_breakdown: any;
+  price_breakdown: Record<string, unknown>;
   status: BookingStatus;
   special_requests: string | null;
   is_recurring: boolean;
+  payment_method?: PaymentMethod;
+  payment_status?: string;
   created_at: string;
   updated_at: string;
 };
@@ -57,7 +59,9 @@ const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
   time: b.time,
   duration: Number(b.duration),
   totalPrice: Number(b.total_price),
-  basePriceBreakdown: b.price_breakdown ?? {
+  paymentMethod: b.payment_method ?? "cash",
+  paymentStatus: (b.payment_status as Booking["paymentStatus"]) ?? "not_required",
+  basePriceBreakdown: (b.price_breakdown as Booking["basePriceBreakdown"]) ?? {
     hourlyRate: 0,
     duration: 0,
     subtotal: 0,
@@ -101,16 +105,16 @@ export const useMyBookings = () => {
   });
 };
 
-export const useVendorBookings = () => {
+export const useOperatorBookings = () => {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ["bookings", "vendor", user?.id],
+    queryKey: ["bookings", "operator", user?.id],
     enabled: !!user,
     queryFn: async (): Promise<Booking[]> => {
       const { data: vehicles, error: vErr } = await supabase
         .from("vehicles")
         .select("id")
-        .eq("vendor_id", user!.id);
+        .eq("operator_id", user!.id);
       if (vErr) throw vErr;
       const vehicleIds = (vehicles ?? []).map((v) => v.id);
       if (vehicleIds.length === 0) return [];
@@ -137,6 +141,7 @@ export type BookingInput = {
   duration: number;
   specialRequests?: string;
   daysOfWeek?: string[];
+  paymentMethod?: PaymentMethod;
 };
 
 export const useCalculatePrice = () =>
@@ -173,7 +178,6 @@ export const useCreateBooking = () => {
     mutationFn: async (input: BookingInput) => {
       if (!user) throw new Error("Not authenticated");
       const days = input.daysOfWeek ?? [];
-      // Compute price server-side for security
       const { data: priceData, error: priceErr } = await supabase.rpc(
         "calculate_booking_price",
         {
@@ -185,6 +189,8 @@ export const useCreateBooking = () => {
       );
       if (priceErr) throw priceErr;
       const price = priceData as { finalTotal: number };
+      const paymentMethod = input.paymentMethod ?? "cash";
+      const paymentStatus = paymentMethod === "prepay" ? "pending" : "not_required";
 
       const { data: created, error } = await supabase
         .from("bookings")
@@ -202,9 +208,11 @@ export const useCreateBooking = () => {
           is_recurring: days.length > 0,
           special_requests: input.specialRequests ?? null,
           total_price: price.finalTotal,
-          price_breakdown: priceData as any,
+          price_breakdown: priceData,
           status: "pending",
-        })
+          payment_method: paymentMethod,
+          payment_status: paymentStatus,
+        } as Record<string, unknown>)
         .select("id")
         .single();
       if (error) throw error;
@@ -235,11 +243,13 @@ export const useUpdateBookingStatus = () => {
   });
 };
 
+/** @deprecated Use useOperatorBookings */
+export const useVendorBookings = useOperatorBookings;
+
 export const useCancelBooking = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      // Customers can update pending → cancelled via RLS
       const { error } = await supabase
         .from("bookings")
         .update({ status: "cancelled" })

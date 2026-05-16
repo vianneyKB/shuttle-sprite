@@ -5,7 +5,7 @@ import type { Vehicle } from "@/types";
 
 type DbVehicle = {
   id: string;
-  vendor_id: string;
+  operator_id: string;
   make: string;
   model: string;
   year: number;
@@ -22,10 +22,10 @@ type DbVehicle = {
   updated_at: string;
 };
 
-const mapVehicle = (v: DbVehicle, vendorName = "Vendor"): Vehicle => ({
+const mapVehicle = (v: DbVehicle, operatorName = "Operator"): Vehicle => ({
   id: v.id,
-  vendorId: v.vendor_id,
-  vendorName,
+  operatorId: v.operator_id,
+  operatorName,
   make: v.make,
   model: v.model,
   year: v.year,
@@ -51,7 +51,7 @@ export const useVehicles = () =>
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as DbVehicle[]).map((v) => mapVehicle(v));
+      return (data as unknown as DbVehicle[]).map((v) => mapVehicle(v));
     },
   });
 
@@ -64,10 +64,10 @@ export const useMyVehicles = () => {
       const { data, error } = await supabase
         .from("vehicles")
         .select("*")
-        .eq("vendor_id", user!.id)
+        .eq("operator_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as DbVehicle[]).map((v) => mapVehicle(v));
+      return (data as unknown as DbVehicle[]).map((v) => mapVehicle(v));
     },
   });
 };
@@ -92,7 +92,7 @@ export const useUpsertVehicle = () => {
     mutationFn: async ({ id, input }: { id?: string; input: VehicleInput }) => {
       if (!user) throw new Error("Not authenticated");
       const payload = {
-        vendor_id: user.id,
+        operator_id: user.id,
         make: input.make,
         model: input.model,
         year: input.year,

@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { X, MapPin, Plus, Minus, Loader2 } from 'lucide-react';
-import { BookingStop } from '@/types';
+import { BookingStop, type PaymentMethod } from '@/types';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 
 const bookingSchema = z.object({
@@ -34,6 +35,7 @@ export const BookingModal: React.FC = () => {
     { id: '2', address: '', type: 'dropoff', order: 1 },
   ]);
   const [stopErrors, setStopErrors] = useState<Record<string, string>>({});
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -125,6 +127,7 @@ export const BookingModal: React.FC = () => {
         time: values.time,
         duration: values.duration,
         specialRequests: values.specialRequests,
+        paymentMethod,
       });
       toast.success('Booking created successfully');
       close();
@@ -253,6 +256,17 @@ export const BookingModal: React.FC = () => {
               <p className="text-sm text-red-600 mt-1">{form.formState.errors.specialRequests.message}</p>
             )}
           </div>
+
+          <fieldset className="space-y-2 border-0 p-0">
+            <Label>Payment</Label>
+            <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="cash">Pay cash on board</SelectItem>
+                <SelectItem value="prepay">Pay in advance</SelectItem>
+              </SelectContent>
+            </Select>
+          </fieldset>
 
           <div className="bg-primary-50 rounded-xl p-4">
             <h4 className="font-semibold text-secondary-900 mb-2">Pricing Summary</h4>

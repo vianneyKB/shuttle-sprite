@@ -24,7 +24,7 @@ const signUpSchema = z.object({
   displayName: z.string().min(2, "Enter your name").max(80),
   email: z.string().email("Enter a valid email"),
   password: z.string().min(8, "At least 8 characters"),
-  role: z.enum(["customer", "vendor"]),
+  role: z.enum(["customer", "operator"]),
 });
 
 const Auth: React.FC = () => {
@@ -163,12 +163,12 @@ const Auth: React.FC = () => {
                 <Label>I am a…</Label>
                 <Select
                   defaultValue="customer"
-                  onValueChange={(v) => signUpForm.setValue("role", v as "customer" | "vendor")}
+                  onValueChange={(v) => signUpForm.setValue("role", v as "customer" | "operator")}
                 >
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="customer">Customer (book rides)</SelectItem>
-                    <SelectItem value="vendor">Vendor (offer vehicles)</SelectItem>
+                    <SelectItem value="operator">Operator (manage routes & fleet)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

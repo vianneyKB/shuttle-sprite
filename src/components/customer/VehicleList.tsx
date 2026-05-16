@@ -16,7 +16,7 @@ export const VehicleList: React.FC = () => {
       filtered = filtered.filter(v =>
         v.make.toLowerCase().includes(q) ||
         v.model.toLowerCase().includes(q) ||
-        v.vendorName.toLowerCase().includes(q)
+        v.operatorName.toLowerCase().includes(q)
       );
     }
     if (f.minCapacity > 1) filtered = filtered.filter(v => v.capacity >= f.minCapacity);

@@ -7,10 +7,10 @@ import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 export const Header: React.FC = () => {
-  const { user, isVendor, isAdmin, signOut } = useAuth();
-  const canSwitchRole = isVendor || isAdmin;
+  const { user, isOperator, isAdmin, signOut } = useAuth();
+  const canSwitchRole = isOperator || isAdmin;
   const location = useLocation();
-  const isVendorRoute = location.pathname.startsWith('/vendor');
+  const isOperatorRoute = location.pathname.startsWith('/operator');
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -21,7 +21,7 @@ export const Header: React.FC = () => {
         variant="ghost"
         size="sm"
         className={`w-full justify-start min-h-11 ${
-          !isVendorRoute ? 'gradient-primary text-white' : ''
+          !isOperatorRoute ? 'gradient-primary text-white' : ''
         }`}
         onClick={() => setMenuOpen(false)}
       >
@@ -35,11 +35,11 @@ export const Header: React.FC = () => {
         variant="ghost"
         size="sm"
         className={`w-full justify-start min-h-11 ${
-          isVendorRoute ? 'gradient-primary text-white' : ''
+          isOperatorRoute ? 'gradient-primary text-white' : ''
         }`}
         onClick={() => setMenuOpen(false)}
       >
-        <Link to="/vendor">
+        <Link to="/operator">
           <Car className="w-4 h-4 mr-2 shrink-0" />
           Operator
         </Link>
@@ -70,7 +70,7 @@ export const Header: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className={`px-3 sm:px-4 py-2 rounded-full min-h-10 ${
-                  !isVendorRoute
+                  !isOperatorRoute
                     ? 'gradient-primary text-white shadow-elevation'
                     : 'text-secondary-600'
                 }`}
@@ -85,12 +85,12 @@ export const Header: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className={`px-3 sm:px-4 py-2 rounded-full min-h-10 ${
-                  isVendorRoute
+                  isOperatorRoute
                     ? 'gradient-primary text-white shadow-elevation'
                     : 'text-secondary-600'
                 }`}
               >
-                <Link to="/vendor">
+                <Link to="/operator">
                   <Car className="w-4 h-4 sm:mr-2" />
                   <span className="hidden sm:inline">Operator</span>
                 </Link>
