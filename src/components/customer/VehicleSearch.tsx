@@ -15,7 +15,7 @@ export const VehicleSearch: React.FC = () => {
     dispatch({ type: 'SET_FILTERS', payload: { searchQuery: value } });
   };
 
-  const handleFilterChange = (key: string, value: any) => {
+  const handleFilterChange = (key: string, value: string | number | boolean | string[]) => {
     dispatch({ type: 'SET_FILTERS', payload: { [key]: value } });
   };
 
