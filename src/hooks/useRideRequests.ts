@@ -63,7 +63,7 @@ export const useMyRideRequests = () => {
     enabled: !!user,
     queryFn: async (): Promise<RideRequest[]> => {
       const { data, error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .select("*")
         .eq("customer_id", user!.id)
         .order("created_at", { ascending: false });
@@ -99,7 +99,7 @@ export const useCreateRideRequest = () => {
     mutationFn: async (input: RideRequestInput) => {
       if (!user) throw new Error("Not authenticated");
       const paymentStatus = input.paymentMethod === "prepay" ? "pending" : "not_required";
-      const { error } = await supabase.from("ride_requests" as "vehicles").insert({
+      const { error } = await supabase.from("ride_requests").insert({
         customer_id: user.id,
         route_id: input.routeId ?? null,
         origin_name: input.originName,
@@ -128,7 +128,7 @@ export const useCancelRideRequest = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .update({ status: "cancelled" })
         .eq("id", id);
       if (error) throw error;
@@ -145,7 +145,7 @@ export const useUpdateRideRequestStatus = () => {
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: RideRequestStatus }) => {
       const { error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .update({ status })
         .eq("id", id);
       if (error) throw error;
