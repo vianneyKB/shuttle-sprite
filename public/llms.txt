@@ -1,0 +1,12 @@
+# ShuttleBook
+
+> ShuttleBook lets passengers view shuttle routes on a live map, request rides, and lets operators manage fleets, bookings, and passenger queues.
+
+## Pages
+
+- [Home](/): Browse shuttle routes on the map, search fleet vehicles, and book rides.
+- [Sign in](/auth): Sign in or create a passenger or operator account.
+
+## Optional
+
+- [Operator dashboard](/operator): Operator-only surface for managing routes, fleet, and bookings (requires sign-in).

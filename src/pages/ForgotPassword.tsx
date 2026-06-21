@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { PageSeo } from "@/components/seo/PageSeo";
 
 const schema = z.object({ email: z.string().email("Enter a valid email") });
 
@@ -34,6 +35,11 @@ const ForgotPassword: React.FC = () => {
 
   return (
     <div className="min-h-screen min-h-[100dvh] flex items-center justify-center p-4 safe-bottom overflow-x-hidden bg-gradient-to-br from-secondary-50 via-white to-primary-50">
+      <PageSeo
+        title="Reset your password — ShuttleBook"
+        description="Request a password reset link for your ShuttleBook account."
+        path="/forgot-password"
+      />
       <Card className="w-full max-w-md p-5 sm:p-8 space-y-6">
         <h1 className="text-2xl font-bold">Reset your password</h1>
         <p className="text-sm text-muted-foreground">
