@@ -15,7 +15,7 @@ export const CustomerView: React.FC = () => {
     <section className="space-y-6 sm:space-y-8">
       <header className="text-center space-y-3 sm:space-y-4 py-6 sm:py-10 px-1">
         <h1 className="text-2xl sm:text-4xl md:text-5xl font-bold text-gradient leading-tight">
-          ShuttleBook
+          ShuttleBook — Professional Transport & Fleet Booking
         </h1>
         <p className="text-base sm:text-xl text-secondary-600 max-w-2xl mx-auto">
           Explore routes on the map, book fleet vehicles, and track your rides.
