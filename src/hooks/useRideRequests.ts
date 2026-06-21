@@ -77,9 +77,9 @@ export const usePassengerQueue = () =>
   useQuery({
     queryKey: ["passenger_queue"],
     queryFn: async (): Promise<PassengerQueueGroup[]> => {
-      const { data, error } = await supabase.rpc("get_passenger_queue");
+      const { data, error } = await (supabase.rpc as (fn: string) => Promise<{ data: Record<string, unknown>[] | null; error: unknown }>)("get_passenger_queue");
       if (error) throw error;
-      return (data ?? []).map((row: Record<string, unknown>) => ({
+      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
         originName: row.origin_name as string,
         destinationName: row.destination_name as string,
         originLat: Number(row.origin_lat),

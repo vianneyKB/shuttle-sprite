@@ -74,7 +74,18 @@ export const VehicleManagement: React.FC = () => {
     try {
       await upsert.mutateAsync({
         id: editing?.id,
-        input: { ...values, image: values.image || undefined, features, available: editing?.available ?? true },
+        input: {
+          make: values.make,
+          model: values.model,
+          year: values.year,
+          capacity: values.capacity,
+          pricePerHour: values.pricePerHour,
+          pricePerDay: values.pricePerDay,
+          location: values.location,
+          image: values.image || undefined,
+          features,
+          available: editing?.available ?? true,
+        },
       });
       toast.success(editing ? 'Vehicle updated' : 'Vehicle added');
       setOpen(false);
@@ -202,10 +213,10 @@ export const VehicleManagement: React.FC = () => {
                 { name: 'pricePerDay', label: 'Price / Day', type: 'number' },
                 { name: 'location', label: 'Location' },
                 { name: 'image', label: 'Image URL (optional)' },
-              ] as const).map(f => (
+              ] as ReadonlyArray<{ name: keyof VehicleFormValues; label: string; type?: string }>).map(f => (
                 <div key={f.name}>
                   <Label htmlFor={f.name}>{f.label}</Label>
-                  <Input id={f.name} type={f.type ?? 'text'} {...form.register(f.name as keyof VehicleFormValues)} />
+                  <Input id={f.name} type={f.type ?? 'text'} {...form.register(f.name)} />
                   {form.formState.errors[f.name as keyof VehicleFormValues] && (
                     <p className="text-sm text-red-600 mt-1">
                       {form.formState.errors[f.name as keyof VehicleFormValues]?.message as string}

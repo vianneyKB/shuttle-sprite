@@ -212,7 +212,7 @@ export const useCreateBooking = () => {
           status: "pending",
           payment_method: paymentMethod,
           payment_status: paymentStatus,
-        } as Record<string, unknown>)
+        })
         .select("id")
         .single();
       if (error) throw error;
