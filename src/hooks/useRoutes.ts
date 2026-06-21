@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { RouteStop, ShuttleRoute } from "@/types";
+import type { Json } from "@/integrations/supabase/types";
 
 type DbRoute = {
   id: string;
@@ -120,7 +121,7 @@ export const useUpsertRoute = () => {
         description: input.description ?? null,
         operating_hours: input.operatingHours ?? null,
         is_active: input.isActive ?? true,
-        geometry: input.geometry ?? { type: "LineString", coordinates: [] },
+        geometry: (input.geometry ?? { type: "LineString", coordinates: [] }) as unknown as Json,
       };
       if (id) {
         const { error } = await supabase
@@ -168,7 +169,7 @@ export const useSaveRouteStops = () => {
       });
       const { error } = await supabase.from("route_stops").insert(payload);
       if (error) throw error;
-      const geometry: GeoJSON.LineString = { type: "LineString", coordinates: coords };
+      const geometry = { type: "LineString", coordinates: coords } as unknown as Json;
       const { error: geoErr } = await supabase
         .from("shuttle_routes")
         .update({ geometry })
