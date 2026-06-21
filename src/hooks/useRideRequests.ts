@@ -63,7 +63,7 @@ export const useMyRideRequests = () => {
     enabled: !!user,
     queryFn: async (): Promise<RideRequest[]> => {
       const { data, error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .select("*")
         .eq("customer_id", user!.id)
         .order("created_at", { ascending: false });
@@ -77,9 +77,9 @@ export const usePassengerQueue = () =>
   useQuery({
     queryKey: ["passenger_queue"],
     queryFn: async (): Promise<PassengerQueueGroup[]> => {
-      const { data, error } = await supabase.rpc("get_passenger_queue");
+      const { data, error } = await (supabase.rpc as unknown as (fn: string) => Promise<{ data: Record<string, unknown>[] | null; error: unknown }>)("get_passenger_queue");
       if (error) throw error;
-      return (data ?? []).map((row: Record<string, unknown>) => ({
+      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
         originName: row.origin_name as string,
         destinationName: row.destination_name as string,
         originLat: Number(row.origin_lat),
@@ -99,7 +99,7 @@ export const useCreateRideRequest = () => {
     mutationFn: async (input: RideRequestInput) => {
       if (!user) throw new Error("Not authenticated");
       const paymentStatus = input.paymentMethod === "prepay" ? "pending" : "not_required";
-      const { error } = await supabase.from("ride_requests" as "vehicles").insert({
+      const { error } = await supabase.from("ride_requests").insert({
         customer_id: user.id,
         route_id: input.routeId ?? null,
         origin_name: input.originName,
@@ -128,7 +128,7 @@ export const useCancelRideRequest = () => {
   return useMutation({
     mutationFn: async (id: string) => {
       const { error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .update({ status: "cancelled" })
         .eq("id", id);
       if (error) throw error;
@@ -145,7 +145,7 @@ export const useUpdateRideRequestStatus = () => {
   return useMutation({
     mutationFn: async ({ id, status }: { id: string; status: RideRequestStatus }) => {
       const { error } = await supabase
-        .from("ride_requests" as "vehicles")
+        .from("ride_requests")
         .update({ status })
         .eq("id", id);
       if (error) throw error;

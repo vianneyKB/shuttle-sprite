@@ -65,6 +65,8 @@ export type Database = {
           id: string
           is_recurring: boolean
           passengers: number
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: string
           price_breakdown: Json
           special_requests: string | null
           start_date: string
@@ -86,6 +88,8 @@ export type Database = {
           id?: string
           is_recurring?: boolean
           passengers: number
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           price_breakdown?: Json
           special_requests?: string | null
           start_date: string
@@ -107,6 +111,8 @@ export type Database = {
           id?: string
           is_recurring?: boolean
           passengers?: number
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
           price_breakdown?: Json
           special_requests?: string | null
           start_date?: string
@@ -156,6 +162,151 @@ export type Database = {
         }
         Relationships: []
       }
+      ride_requests: {
+        Row: {
+          created_at: string
+          customer_id: string
+          destination_lat: number
+          destination_lng: number
+          destination_name: string
+          id: string
+          notes: string | null
+          origin_lat: number
+          origin_lng: number
+          origin_name: string
+          passengers: number
+          payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_status: string
+          route_id: string | null
+          scheduled_at: string | null
+          status: Database["public"]["Enums"]["ride_request_status"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          customer_id: string
+          destination_lat: number
+          destination_lng: number
+          destination_name: string
+          id?: string
+          notes?: string | null
+          origin_lat: number
+          origin_lng: number
+          origin_name: string
+          passengers?: number
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
+          route_id?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["ride_request_status"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          customer_id?: string
+          destination_lat?: number
+          destination_lng?: number
+          destination_name?: string
+          id?: string
+          notes?: string | null
+          origin_lat?: number
+          origin_lng?: number
+          origin_name?: string
+          passengers?: number
+          payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_status?: string
+          route_id?: string | null
+          scheduled_at?: string | null
+          status?: Database["public"]["Enums"]["ride_request_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_requests_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "shuttle_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      route_stops: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          lat: number
+          lng: number
+          name: string
+          route_id: string
+          stop_order: number
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          lat: number
+          lng: number
+          name: string
+          route_id: string
+          stop_order: number
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          lat?: number
+          lng?: number
+          name?: string
+          route_id?: string
+          stop_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_stops_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "shuttle_routes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      shuttle_routes: {
+        Row: {
+          created_at: string
+          description: string | null
+          geometry: Json
+          id: string
+          is_active: boolean
+          name: string
+          operating_hours: string | null
+          operator_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          geometry?: Json
+          id?: string
+          is_active?: boolean
+          name: string
+          operating_hours?: string | null
+          operator_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          geometry?: Json
+          id?: string
+          is_active?: boolean
+          name?: string
+          operating_hours?: string | null
+          operator_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -188,12 +339,12 @@ export type Database = {
           location: string
           make: string
           model: string
+          operator_id: string
           price_per_day: number
           price_per_hour: number
           rating: number
           reviews: number
           updated_at: string
-          vendor_id: string
           year: number
         }
         Insert: {
@@ -206,12 +357,12 @@ export type Database = {
           location: string
           make: string
           model: string
+          operator_id: string
           price_per_day: number
           price_per_hour: number
           rating?: number
           reviews?: number
           updated_at?: string
-          vendor_id: string
           year: number
         }
         Update: {
@@ -224,12 +375,12 @@ export type Database = {
           location?: string
           make?: string
           model?: string
+          operator_id?: string
           price_per_day?: number
           price_per_hour?: number
           rating?: number
           reviews?: number
           updated_at?: string
-          vendor_id?: string
           year?: number
         }
         Relationships: []
@@ -248,6 +399,19 @@ export type Database = {
         }
         Returns: Json
       }
+      get_passenger_queue: {
+        Args: never
+        Returns: {
+          destination_lat: number
+          destination_lng: number
+          destination_name: string
+          origin_lat: number
+          origin_lng: number
+          origin_name: string
+          request_count: number
+          total_passengers: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -257,8 +421,15 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "vendor" | "customer"
+      app_role: "admin" | "operator" | "customer"
       booking_status: "pending" | "confirmed" | "completed" | "cancelled"
+      payment_method: "cash" | "prepay"
+      ride_request_status:
+        | "awaiting"
+        | "confirmed"
+        | "in_progress"
+        | "completed"
+        | "cancelled"
       stop_type: "pickup" | "dropoff" | "stop"
     }
     CompositeTypes: {
@@ -387,8 +558,16 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "vendor", "customer"],
+      app_role: ["admin", "operator", "customer"],
       booking_status: ["pending", "confirmed", "completed", "cancelled"],
+      payment_method: ["cash", "prepay"],
+      ride_request_status: [
+        "awaiting",
+        "confirmed",
+        "in_progress",
+        "completed",
+        "cancelled",
+      ],
       stop_type: ["pickup", "dropoff", "stop"],
     },
   },

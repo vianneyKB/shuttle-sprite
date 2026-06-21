@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { RouteStop, ShuttleRoute } from "@/types";
+import type { Json } from "@/integrations/supabase/types";
 
 type DbRoute = {
   id: string;
@@ -55,7 +56,7 @@ const fetchRoutesWithStops = async (routes: DbRoute[]): Promise<ShuttleRoute[]> 
   if (routes.length === 0) return [];
   const ids = routes.map((r) => r.id);
   const { data: stops, error } = await supabase
-    .from("route_stops" as "vehicles")
+    .from("route_stops")
     .select("*")
     .in("route_id", ids);
   if (error) throw error;
@@ -67,7 +68,7 @@ export const useShuttleRoutes = () =>
     queryKey: ["shuttle_routes", "all"],
     queryFn: async (): Promise<ShuttleRoute[]> => {
       const { data, error } = await supabase
-        .from("shuttle_routes" as "vehicles")
+        .from("shuttle_routes")
         .select("*")
         .eq("is_active", true)
         .order("created_at", { ascending: false });
@@ -83,7 +84,7 @@ export const useMyRoutes = () => {
     enabled: !!user,
     queryFn: async (): Promise<ShuttleRoute[]> => {
       const { data, error } = await supabase
-        .from("shuttle_routes" as "vehicles")
+        .from("shuttle_routes")
         .select("*")
         .eq("operator_id", user!.id)
         .order("created_at", { ascending: false });
@@ -120,18 +121,18 @@ export const useUpsertRoute = () => {
         description: input.description ?? null,
         operating_hours: input.operatingHours ?? null,
         is_active: input.isActive ?? true,
-        geometry: input.geometry ?? { type: "LineString", coordinates: [] },
+        geometry: (input.geometry ?? { type: "LineString", coordinates: [] }) as unknown as Json,
       };
       if (id) {
         const { error } = await supabase
-          .from("shuttle_routes" as "vehicles")
+          .from("shuttle_routes")
           .update(payload)
           .eq("id", id);
         if (error) throw error;
         return id;
       }
       const { data, error } = await supabase
-        .from("shuttle_routes" as "vehicles")
+        .from("shuttle_routes")
         .insert(payload)
         .select("id")
         .single();
@@ -152,7 +153,7 @@ export const useSaveRouteStops = () => {
       routeId: string;
       stops: RouteStopInput[];
     }) => {
-      await supabase.from("route_stops" as "vehicles").delete().eq("route_id", routeId);
+      await supabase.from("route_stops").delete().eq("route_id", routeId);
       if (stops.length === 0) return;
       const coords: [number, number][] = [];
       const payload = stops.map((s, i) => {
@@ -166,11 +167,11 @@ export const useSaveRouteStops = () => {
           lng: s.lng,
         };
       });
-      const { error } = await supabase.from("route_stops" as "vehicles").insert(payload);
+      const { error } = await supabase.from("route_stops").insert(payload);
       if (error) throw error;
-      const geometry: GeoJSON.LineString = { type: "LineString", coordinates: coords };
+      const geometry = { type: "LineString", coordinates: coords } as unknown as Json;
       const { error: geoErr } = await supabase
-        .from("shuttle_routes" as "vehicles")
+        .from("shuttle_routes")
         .update({ geometry })
         .eq("id", routeId);
       if (geoErr) throw geoErr;
@@ -183,7 +184,7 @@ export const useDeleteRoute = () => {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("shuttle_routes" as "vehicles").delete().eq("id", id);
+      const { error } = await supabase.from("shuttle_routes").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shuttle_routes"] }),
