@@ -15,12 +15,31 @@ import { RoleRoute } from "./components/auth/RoleRoute";
 
 const queryClient = new QueryClient();
 
-const App = () => (
+const routerBasename = import.meta.env.BASE_URL.replace(/\/$/, "") || undefined;
+
+const App = () => {
+  // #region agent log
+  fetch("http://127.0.0.1:7578/ingest/50506bb6-019f-48cf-b599-974a082e015e", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "264723" },
+    body: JSON.stringify({
+      sessionId: "264723",
+      runId: "fix-main",
+      hypothesisId: "A",
+      location: "App.tsx:render",
+      message: "App rendering",
+      data: { routerBasename, pathname: typeof location !== "undefined" ? location.pathname : null },
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+  // #endregion
+
+  return (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
+      <BrowserRouter basename={routerBasename}>
         <AuthProvider>
           <Routes>
             <Route path="/auth" element={<Auth />} />
@@ -49,6 +68,7 @@ const App = () => (
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>
-);
+  );
+};
 
 export default App;
