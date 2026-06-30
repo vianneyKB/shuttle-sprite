@@ -55,7 +55,7 @@ export const Header: React.FC = () => {
             <Car className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
           </div>
           <div className="min-w-0">
-            <h1 className="text-base sm:text-xl font-bold text-gradient truncate">ShuttleBook</h1>
+            <p className="text-base sm:text-xl font-bold text-gradient truncate">ShuttleBook</p>
             <p className="text-xs text-secondary-600 -mt-0.5 hidden sm:block truncate">
               Professional Transport
             </p>

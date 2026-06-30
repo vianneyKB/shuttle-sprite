@@ -162,6 +162,7 @@ export const RouteManagement: React.FC = () => {
                     <Button
                       variant="outline"
                       size="sm"
+                      aria-label="Delete route"
                       onClick={async () => {
                         if (!confirm("Delete this route?")) return;
                         try {
