@@ -14,6 +14,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/context/AuthContext";
+import { PageSeo } from "@/components/seo/PageSeo";
 
 const signInSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -95,6 +96,11 @@ const Auth: React.FC = () => {
 
   return (
     <div className="min-h-screen min-h-[100dvh] bg-gradient-to-br from-secondary-50 via-white to-primary-50 flex items-center justify-center p-4 safe-bottom overflow-x-hidden">
+      <PageSeo
+        title="Sign in or create an account — ShuttleBook"
+        description="Sign in to ShuttleBook to book shuttle rides, or create an operator account to manage routes and fleet bookings."
+        path="/auth"
+      />
       <Card className="w-full max-w-md p-5 sm:p-8 space-y-6">
         <div className="flex items-center justify-center gap-3">
           <div className="w-10 h-10 gradient-primary rounded-xl flex items-center justify-center">

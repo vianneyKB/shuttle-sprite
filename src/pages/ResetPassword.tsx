@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { PageSeo } from "@/components/seo/PageSeo";
 
 const schema = z
   .object({
@@ -63,6 +64,11 @@ const ResetPassword: React.FC = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-secondary-50 via-white to-primary-50">
+      <PageSeo
+        title="Set a new password — ShuttleBook"
+        description="Choose a new password for your ShuttleBook account."
+        path="/reset-password"
+      />
       <Card className="w-full max-w-md p-8 space-y-6">
         <h1 className="text-2xl font-bold">Set a new password</h1>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-3">
