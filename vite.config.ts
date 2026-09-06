@@ -16,5 +16,6 @@ export default defineConfig(({ mode }) => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
-  base: '/shuttle-sprite/'
+  // GitHub Pages is served under /shuttle-sprite/; local `npm run dev` uses /
+  base: mode === "production" ? "/shuttle-sprite/" : "/",
 }));

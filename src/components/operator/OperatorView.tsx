@@ -2,7 +2,7 @@ import React from "react";
 import { OperatorDashboard } from "./OperatorDashboard";
 import { RouteManagement } from "./RouteManagement";
 import { PassengerQueue } from "./PassengerQueue";
-import { VehicleManagement } from "@/components/vendor/VehicleManagement";
+import { VehicleManagement } from "@/components/operator/VehicleManagement";
 import { BookingManagement } from "@/components/operator/BookingManagement";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BarChart3, Car, Calendar, Route, Users } from "lucide-react";
