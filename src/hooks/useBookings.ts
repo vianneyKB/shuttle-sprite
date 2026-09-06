@@ -243,9 +243,6 @@ export const useUpdateBookingStatus = () => {
   });
 };
 
-/** @deprecated Use useOperatorBookings */
-export const useVendorBookings = useOperatorBookings;
-
 export const useCancelBooking = () => {
   const qc = useQueryClient();
   return useMutation({

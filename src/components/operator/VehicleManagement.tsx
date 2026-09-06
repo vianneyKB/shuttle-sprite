@@ -89,14 +89,14 @@ export const VehicleManagement: React.FC = () => {
       });
       toast.success(editing ? 'Vehicle updated' : 'Vehicle added');
       setOpen(false);
-    } catch (e: any) {
-      toast.error(e?.message ?? 'Failed to save vehicle');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to save vehicle');
     }
   };
 
   const onToggle = async (v: Vehicle) => {
     try { await toggle.mutateAsync({ id: v.id, available: !v.available }); }
-    catch (e: any) { toast.error(e?.message ?? 'Failed to update'); }
+    catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed to update'); }
   };
 
   const onDelete = async (v: Vehicle) => {
@@ -104,7 +104,7 @@ export const VehicleManagement: React.FC = () => {
     try {
       await remove.mutateAsync(v.id);
       toast.success('Vehicle deleted');
-    } catch (e: any) { toast.error(e?.message ?? 'Failed to delete'); }
+    } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed to delete'); }
   };
 
   if (isLoading) {
