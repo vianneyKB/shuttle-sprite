@@ -131,8 +131,8 @@ export const BookingModal: React.FC = () => {
       });
       toast.success('Booking created successfully');
       close();
-    } catch (e: any) {
-      toast.error(e?.message ?? 'Failed to create booking');
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : 'Failed to create booking');
     }
   };
 
