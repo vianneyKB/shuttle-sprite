@@ -48,6 +48,8 @@ issue "Phase 0: Stabilise build, CI, deploy and test harness" "phase-0:stabilise
 **Remaining manual step:** add the two \`VITE_SUPABASE_*\` secrets under *Settings → Secrets and variables → Actions*, then merge \`Dev\` → \`main\` to trigger a working deploy."
 
 # ───────────────────────── Phase 1 ─────────────────────────
+# Already fixed on main by PR #14 (4dbc6af): role self-assignment at signup,
+# get_passenger_queue anon/role leak, missing WITH CHECK on UPDATE policies.
 issue "Server-side booking creation: stop trusting client total_price" "phase-1:security,security" \
 "**Finding (critical).** \`src/hooks/useBookings.ts\` calls \`calculate_booking_price\` and then the *client* inserts \`total_price\` into \`bookings\`. The INSERT policy only checks \`customer_id = auth.uid()\`, so any user can insert a booking at any price.
 
@@ -56,37 +58,6 @@ issue "Server-side booking creation: stop trusting client total_price" "phase-1:
 - Replace the client insert in \`useCreateBooking\` with the RPC call.
 - Either drop the customer INSERT policy on \`bookings\`/\`booking_stops\` or add a trigger that recomputes \`total_price\` on insert as a belt-and-braces guard.
 - Regenerate \`src/integrations/supabase/types.ts\`."
-
-issue "Signup lets anyone self-assign the operator role" "phase-1:security,security" \
-"**Finding (critical).** \`handle_new_user()\` reads \`role\` from \`raw_user_meta_data\`, which the client controls (\`src/pages/Auth.tsx\` sends it). Anyone can register as an operator.
-
-**Fix**
-- Default every signup to \`customer\`; ignore metadata \`role\`.
-- Add an \`operator_applications\` table (or simply an admin-only action) to grant \`operator\` in \`user_roles\`.
-- Update the signup form: replace the role select with an \"I want to operate shuttles\" checkbox that creates an application.
-- Admin UI to approve is tracked in the Phase 5 admin issue."
-
-issue "Scope get_passenger_queue to the calling operator" "phase-1:security,security" \
-"**Finding (critical).** \`get_passenger_queue()\` is \`SECURITY DEFINER\`, granted to all \`authenticated\`, and has no operator filter. Any signed-in customer can call it and read every waiting passenger's origin/destination coordinates.
-
-**Fix** — inside the function:
-- \`WHERE has_role(auth.uid(), 'operator')\` (raise or return empty otherwise)
-- join \`ride_requests.route_id → shuttle_routes.operator_id = auth.uid()\` so operators only see demand on their own routes
-- keep \`SECURITY DEFINER\` only if still needed after RLS on \`ride_requests\` is tightened; otherwise switch to \`SECURITY INVOKER\`."
-
-issue "Add WITH CHECK to customer/operator UPDATE policies (status escalation)" "phase-1:security,security" \
-"**Finding.** These policies have \`USING\` but no \`WITH CHECK\`, so the row can be updated *to* any state:
-- \`bookings\`: \"Customers update their own pending bookings\"
-- \`ride_requests\`: \"Customers cancel own awaiting requests\"
-- \`ride_requests\`: \"Operators update ride requests\" (also allows any operator when \`route_id IS NULL\`)
-- \`bookings\`: \"Operators update bookings on their vehicles\"
-
-A customer can set \`status = 'completed'\` or rewrite \`total_price\`.
-
-**Fix** — new migration:
-- customers: \`WITH CHECK (status = 'cancelled')\` and, for bookings, that price/vehicle columns are unchanged (compare via a trigger or column-level grants)
-- operators on ride_requests: require a matching route (drop the \`route_id IS NULL\` branch) and \`WITH CHECK\` on allowed transitions
-- add a small pgTAP/SQL test for each (see Phase 6)."
 
 issue "Transactional save_route_stops RPC (currently delete-then-insert)" "phase-1:security" \
 "\`useSaveRouteStops\` in \`src/hooks/useRoutes.ts\` deletes all stops, inserts the new set, then updates \`shuttle_routes.geometry\` — three separate requests. A failure mid-way leaves a route with no stops and stale geometry.
@@ -198,7 +169,7 @@ issue "Admin view: approve operators, see all bookings and requests" "phase-5:po
 "The \`admin\` role and its RLS policies already exist; there is no UI.
 - \`/admin\` guarded by \`RoleRoute allow={['admin']}\`.
 - Tabs: Operator applications (approve/reject → inserts \`user_roles\`), All bookings, All ride requests.
-- Depends on the operator-application issue in Phase 1."
+- Operator approval flow: PR #14 restricted signup to customer/operator; decide here whether operator still self-selects at signup or needs admin approval."
 
 # ───────────────────────── Phase 6 ─────────────────────────
 issue "Unit tests: pricing parity, role gating, ride request flow" "phase-6:testing" \
