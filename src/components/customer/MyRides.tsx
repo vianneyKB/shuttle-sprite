@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, MapPin, Loader2, Bus } from "lucide-react";
 import { toast } from "sonner";
+import { formatMoney } from "@/lib/money";
 
 const Row = ({ children, className }: { children: React.ReactNode; className?: string }) => (
   <p className={className}>{children}</p>
@@ -94,7 +95,7 @@ export const MyRides: React.FC = () => {
               <CardContent className="p-4 sm:p-6 space-y-3">
                 <Row className="flex flex-wrap items-center gap-2 justify-between">
                   <Badge className={statusColor(b.status)}>{b.status}</Badge>
-                  <span className="font-semibold text-primary-600">${b.totalPrice}</span>
+                  <span className="font-semibold text-primary-600">{formatMoney(b.totalPrice, b.currency)}</span>
                 </Row>
                 <p className="flex items-center gap-2 text-sm">
                   <Calendar className="w-4 h-4 shrink-0" />

@@ -11,7 +11,8 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | **Operator** | Route CRUD with ordered stops (LineString geometry) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
-| **Backend** | Supabase Auth, RLS, `calculate_booking_price` RPC, `get_passenger_queue` RPC |
+| **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
+| **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
 
 ## Tech stack
 

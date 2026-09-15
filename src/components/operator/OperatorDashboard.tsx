@@ -1,12 +1,16 @@
 import React from "react";
 import { useMyVehicles } from "@/hooks/useVehicles";
 import { useOperatorBookings } from "@/hooks/useBookings";
+import { useMyOperatorSettings } from "@/hooks/useOperatorSettings";
+import { formatMoney } from "@/lib/money";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Car, Calendar, DollarSign, TrendingUp, Clock, Loader2 } from "lucide-react";
 
 export const OperatorDashboard: React.FC = () => {
   const { data: vehicles = [], isLoading: vLoad } = useMyVehicles();
   const { data: bookings = [], isLoading: bLoad } = useOperatorBookings();
+  const { data: settings } = useMyOperatorSettings();
+  const currency = settings?.currency;
 
   if (vLoad || bLoad) {
     return (
@@ -28,7 +32,7 @@ export const OperatorDashboard: React.FC = () => {
     { title: "Available Now", value: available, icon: Clock, color: "text-green-600", bgColor: "bg-green-50" },
     { title: "Pending Bookings", value: pending, icon: Calendar, color: "text-orange-600", bgColor: "bg-orange-50" },
     { title: "Confirmed Bookings", value: confirmed, icon: Calendar, color: "text-purple-600", bgColor: "bg-purple-50" },
-    { title: "Total Earnings", value: `$${totalEarnings.toLocaleString()}`, icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-50" },
+    { title: "Total Earnings", value: formatMoney(totalEarnings, currency), icon: DollarSign, color: "text-emerald-600", bgColor: "bg-emerald-50" },
     { title: "Total Bookings", value: bookings.length, icon: TrendingUp, color: "text-indigo-600", bgColor: "bg-indigo-50" },
   ];
 
@@ -95,7 +99,7 @@ export const OperatorDashboard: React.FC = () => {
                       </p>
                     </>
                     <p className="text-right">
-                      <span className="font-semibold">${booking.totalPrice}</span>
+                      <span className="font-semibold">{formatMoney(booking.totalPrice, booking.currency)}</span>
                       <br />
                       <span className="text-sm text-secondary-600 capitalize">{booking.status}</span>
                     </p>

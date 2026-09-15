@@ -55,6 +55,7 @@ export type Database = {
       bookings: {
         Row: {
           created_at: string
+          currency: string
           customer_email: string
           customer_id: string
           customer_name: string
@@ -71,6 +72,9 @@ export type Database = {
           special_requests: string | null
           start_date: string
           status: Database["public"]["Enums"]["booking_status"]
+          subtotal: number
+          tax_amount: number
+          tax_rate: number
           time: string
           total_price: number
           updated_at: string
@@ -78,6 +82,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          currency?: string
           customer_email: string
           customer_id: string
           customer_name: string
@@ -94,6 +99,9 @@ export type Database = {
           special_requests?: string | null
           start_date: string
           status?: Database["public"]["Enums"]["booking_status"]
+          subtotal?: number
+          tax_amount?: number
+          tax_rate?: number
           time: string
           total_price: number
           updated_at?: string
@@ -101,6 +109,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          currency?: string
           customer_email?: string
           customer_id?: string
           customer_name?: string
@@ -117,6 +126,9 @@ export type Database = {
           special_requests?: string | null
           start_date?: string
           status?: Database["public"]["Enums"]["booking_status"]
+          subtotal?: number
+          tax_amount?: number
+          tax_rate?: number
           time?: string
           total_price?: number
           updated_at?: string
@@ -131,6 +143,39 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      operator_settings: {
+        Row: {
+          additional_stop_fee: number
+          created_at: string
+          currency: string
+          operator_id: string
+          prices_include_tax: boolean
+          tax_label: string
+          tax_rate: number
+          updated_at: string
+        }
+        Insert: {
+          additional_stop_fee?: number
+          created_at?: string
+          currency?: string
+          operator_id: string
+          prices_include_tax?: boolean
+          tax_label?: string
+          tax_rate?: number
+          updated_at?: string
+        }
+        Update: {
+          additional_stop_fee?: number
+          created_at?: string
+          currency?: string
+          operator_id?: string
+          prices_include_tax?: boolean
+          tax_label?: string
+          tax_rate?: number
+          updated_at?: string
+        }
+        Relationships: []
       }
       profiles: {
         Row: {
@@ -398,6 +443,23 @@ export type Database = {
           _vehicle_id: string
         }
         Returns: Json
+      }
+      create_booking: {
+        Args: {
+          _customer_email: string
+          _customer_name: string
+          _customer_phone: string
+          _days_of_week?: string[]
+          _duration: number
+          _passengers: number
+          _payment_method?: Database["public"]["Enums"]["payment_method"]
+          _special_requests?: string | null
+          _start_date: string
+          _stops: Json
+          _time: string
+          _vehicle_id: string
+        }
+        Returns: string
       }
       get_passenger_queue: {
         Args: never

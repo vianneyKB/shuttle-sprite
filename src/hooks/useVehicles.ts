@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { Vehicle } from "@/types";
+import { DEFAULT_CURRENCY } from "@/lib/money";
 
 export type DbVehicle = {
   id: string;
@@ -22,7 +23,7 @@ export type DbVehicle = {
   updated_at: string;
 };
 
-export const mapVehicle = (v: DbVehicle, operatorName = "Operator"): Vehicle => ({
+export const mapVehicle = (v: DbVehicle, currency = DEFAULT_CURRENCY, operatorName = "Operator"): Vehicle => ({
   id: v.id,
   operatorId: v.operator_id,
   operatorName,
@@ -35,12 +36,30 @@ export const mapVehicle = (v: DbVehicle, operatorName = "Operator"): Vehicle => 
   location: v.location,
   features: v.features ?? [],
   image: v.image ?? "",
+  currency,
   available: v.available,
   rating: Number(v.rating),
   reviews: v.reviews,
   createdAt: new Date(v.created_at),
   updatedAt: new Date(v.updated_at),
 });
+
+/** Currency per operator, from operator_settings (readable by all authenticated users). */
+const fetchCurrencies = async (operatorIds: string[]): Promise<Map<string, string>> => {
+  const ids = [...new Set(operatorIds)];
+  if (ids.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("operator_settings")
+    .select("operator_id, currency")
+    .in("operator_id", ids);
+  if (error) throw error;
+  return new Map((data ?? []).map((r) => [r.operator_id, r.currency]));
+};
+
+const mapVehiclesWithCurrency = async (rows: DbVehicle[]): Promise<Vehicle[]> => {
+  const currencies = await fetchCurrencies(rows.map((v) => v.operator_id));
+  return rows.map((v) => mapVehicle(v, currencies.get(v.operator_id) ?? DEFAULT_CURRENCY));
+};
 
 export const useVehicles = () =>
   useQuery({
@@ -51,7 +70,7 @@ export const useVehicles = () =>
         .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as unknown as DbVehicle[]).map((v) => mapVehicle(v));
+      return mapVehiclesWithCurrency((data ?? []) as unknown as DbVehicle[]);
     },
   });
 
@@ -67,7 +86,7 @@ export const useMyVehicles = () => {
         .eq("operator_id", user!.id)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data as unknown as DbVehicle[]).map((v) => mapVehicle(v));
+      return mapVehiclesWithCurrency((data ?? []) as unknown as DbVehicle[]);
     },
   });
 };

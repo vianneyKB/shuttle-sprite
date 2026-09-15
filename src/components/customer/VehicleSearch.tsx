@@ -89,10 +89,10 @@ export const VehicleSearch: React.FC = () => {
             <SelectValue placeholder="Max Price" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="50">Up to $50/hr</SelectItem>
-            <SelectItem value="75">Up to $75/hr</SelectItem>
-            <SelectItem value="100">Up to $100/hr</SelectItem>
-            <SelectItem value="150">Up to $150/hr</SelectItem>
+            <SelectItem value="50">Up to 50 / hr</SelectItem>
+            <SelectItem value="75">Up to 75 / hr</SelectItem>
+            <SelectItem value="100">Up to 100 / hr</SelectItem>
+            <SelectItem value="150">Up to 150 / hr</SelectItem>
             <SelectItem value="1000">Any price</SelectItem>
           </SelectContent>
         </Select>
