@@ -5,6 +5,21 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-15 — Fix stale Supabase project ref
+branch `Dev`
+
+**Why:** `supabase/config.toml` pointed at `syiixyjicrqrohmqasyc`, which is not the project the app's data lives in. The live project — the one the Supabase GitHub integration deploys migrations to and whose publishable key the site uses — is `dyynbzbpitjoyfrxnxux`. Deploying with the old URL + the real key produced "Invalid API key" on sign-in.
+
+### Changed
+| Item | Why |
+|---|---|
+| `supabase/config.toml` project_id → `dyynbzbpitjoyfrxnxux` | Match the real project so the CLI and future readers link to the right database. |
+| `.env.example` shows the real project URL | One less thing to get wrong on local setup. |
+
+**Manual:** the `VITE_SUPABASE_URL` repository secret must be `https://dyynbzbpitjoyfrxnxux.supabase.co`.
+
+---
+
 ## 2026-09-15 — Deploy: fail loudly when Supabase secrets are missing
 branch `Dev` · in PR #43
 
