@@ -474,6 +474,22 @@ export type Database = {
           total_passengers: number
         }[]
       }
+      save_route_stops: {
+        Args: {
+          _route_id: string
+          _stops: Json
+        }
+        Returns: {
+          created_at: string
+          description: string | null
+          id: string
+          lat: number
+          lng: number
+          name: string
+          route_id: string
+          stop_order: number
+        }[]
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]

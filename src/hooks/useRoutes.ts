@@ -152,29 +152,20 @@ export const useSaveRouteStops = () => {
     }: {
       routeId: string;
       stops: RouteStopInput[];
-    }) => {
-      await supabase.from("route_stops").delete().eq("route_id", routeId);
-      if (stops.length === 0) return;
-      const coords: [number, number][] = [];
-      const payload = stops.map((s, i) => {
-        coords.push([s.lng, s.lat]);
-        return {
-          route_id: routeId,
+    }): Promise<RouteStop[]> => {
+      // One RPC = one transaction: stops are replaced and the route's
+      // LineString rebuilt together, or nothing changes.
+      const { data, error } = await supabase.rpc("save_route_stops", {
+        _route_id: routeId,
+        _stops: stops.map((s) => ({
           name: s.name,
           description: s.description ?? null,
-          stop_order: i,
           lat: s.lat,
           lng: s.lng,
-        };
+        })),
       });
-      const { error } = await supabase.from("route_stops").insert(payload);
       if (error) throw error;
-      const geometry = { type: "LineString", coordinates: coords } as unknown as Json;
-      const { error: geoErr } = await supabase
-        .from("shuttle_routes")
-        .update({ geometry })
-        .eq("id", routeId);
-      if (geoErr) throw geoErr;
+      return ((data ?? []) as unknown as DbRouteStop[]).map(mapStop);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shuttle_routes"] }),
   });
