@@ -83,12 +83,12 @@ describe("mapBooking", () => {
     const b = mapBooking(legacy as DbBooking, []);
     expect(b.paymentMethod).toBe("cash");
     expect(b.paymentStatus).toBe("not_required");
-    // No snapshot columns → whole total is the subtotal, no tax, default currency.
-    expect(b.currency).toBe("USD");
+    // No snapshot columns → whole total is the subtotal, no tax, platform default currency.
+    expect(b.currency).toBe("ZAR");
     expect(b.subtotal).toBe(250);
     expect(b.taxRate).toBe(0);
     expect(b.taxAmount).toBe(0);
-    expect(b.basePriceBreakdown.currency).toBe("USD");
+    expect(b.basePriceBreakdown.currency).toBe("ZAR");
     expect(b.basePriceBreakdown.additionalStopFee).toBe(0);
   });
 });
@@ -176,8 +176,8 @@ describe("mapVehicle", () => {
       updated_at: "2026-09-15T08:00:00Z",
     };
     const v = mapVehicle(row);
-    expect(v.currency).toBe("USD");
-    expect(mapVehicle(row, "ZAR").currency).toBe("ZAR");
+    expect(v.currency).toBe("ZAR");
+    expect(mapVehicle(row, "USD").currency).toBe("USD");
     expect(v.pricePerHour).toBe(45.5);
     expect(v.pricePerDay).toBe(320);
     expect(v.rating).toBe(4.5);

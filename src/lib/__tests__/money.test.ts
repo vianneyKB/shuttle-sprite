@@ -12,8 +12,9 @@ describe("formatMoney", () => {
     expect(formatMoney(1234.5, "JPY", "ja-JP")).toBe("￥1,235");
   });
 
-  it("falls back to the default currency when none is given", () => {
-    expect(formatMoney(10, undefined, "en-US")).toBe("$10.00");
+  it("falls back to South African rand when no currency is given", () => {
+    expect(formatMoney(10, undefined, "en-ZA")).toMatch(/^R\s?10,00$/);
+    expect(formatMoney(10, undefined, "en-US")).toMatch(/^ZAR\s10\.00$/); // Intl uses a non-breaking space
   });
 
   it("is case-insensitive on the code and never throws on an unknown one", () => {

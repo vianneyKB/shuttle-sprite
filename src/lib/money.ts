@@ -4,7 +4,9 @@
  * snapshot. Intl handles symbol, placement and minor-unit digits (JPY has none).
  */
 
-export const DEFAULT_CURRENCY = "USD";
+/** Platform home market is South Africa; operators elsewhere set their own. */
+export const DEFAULT_CURRENCY = "ZAR";
+export const DEFAULT_TAX_RATE = 15;
 
 const formatterCache = new Map<string, Intl.NumberFormat>();
 

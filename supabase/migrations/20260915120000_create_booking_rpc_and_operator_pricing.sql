@@ -9,7 +9,8 @@
 -- SECURITY DEFINER function that computes the price, inserts the booking
 -- and its stops in one transaction, and snapshots currency and tax.
 --
--- Multi-country: currency, tax rate, tax label, tax-inclusive pricing
+-- Platform defaults are South Africa: ZAR, 15% VAT. Multi-country:
+-- currency, tax rate, tax label, tax-inclusive pricing
 -- and the additional-stop fee are per operator (operator_settings), so
 -- one platform can serve ZAR + 15% VAT, GBP + 20% VAT, JPY + 10%, etc.
 -- Bookings snapshot those values so later changes never rewrite history.
@@ -20,8 +21,8 @@
 -- ---------------------------------------------------------
 create table public.operator_settings (
   operator_id uuid primary key references auth.users(id) on delete cascade,
-  currency char(3) not null default 'USD' check (currency ~ '^[A-Z]{3}$'),
-  tax_rate numeric(5,2) not null default 0 check (tax_rate >= 0 and tax_rate <= 100),
+  currency char(3) not null default 'ZAR' check (currency ~ '^[A-Z]{3}$'),
+  tax_rate numeric(5,2) not null default 15 check (tax_rate >= 0 and tax_rate <= 100),
   tax_label text not null default 'VAT' check (char_length(tax_label) between 1 and 30),
   prices_include_tax boolean not null default false,
   additional_stop_fee numeric(10,2) not null default 15 check (additional_stop_fee >= 0),
@@ -82,7 +83,7 @@ on conflict (operator_id) do nothing;
 -- 2. bookings: snapshot the pricing locale
 -- ---------------------------------------------------------
 alter table public.bookings
-  add column if not exists currency char(3) not null default 'USD' check (currency ~ '^[A-Z]{3}$'),
+  add column if not exists currency char(3) not null default 'ZAR' check (currency ~ '^[A-Z]{3}$'),
   add column if not exists subtotal numeric(10,2) not null default 0 check (subtotal >= 0),
   add column if not exists tax_rate numeric(5,2) not null default 0 check (tax_rate >= 0 and tax_rate <= 100),
   add column if not exists tax_amount numeric(10,2) not null default 0 check (tax_amount >= 0);
@@ -115,8 +116,8 @@ as $$
 declare
   v_hourly numeric;
   v_operator uuid;
-  v_currency char(3) := 'USD';
-  v_tax_rate numeric := 0;
+  v_currency char(3) := 'ZAR';
+  v_tax_rate numeric := 15;
   v_tax_label text := 'VAT';
   v_incl boolean := false;
   v_stop_fee numeric := 15;

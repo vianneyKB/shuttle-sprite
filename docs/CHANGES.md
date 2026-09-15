@@ -13,7 +13,7 @@ branch `Dev` · closes #17 · migration `20260915120000_create_booking_rpc_and_o
 ### Added
 | Item | Why |
 |---|---|
-| `operator_settings` table — `currency` (ISO 4217), `tax_rate` %, `tax_label` (VAT/GST/…), `prices_include_tax`, `additional_stop_fee` | One platform, many countries. Readable by all signed-in users (passengers need the currency to see prices); writable only by the owning operator. A trigger creates a default row when a user gains the `operator` role; existing operators backfilled. |
+| `operator_settings` table — `currency` (ISO 4217, default `ZAR`), `tax_rate` % (default 15), `tax_label` (VAT/GST/…), `prices_include_tax`, `additional_stop_fee` | One platform, many countries; defaults are South Africa. Readable by all signed-in users (passengers need the currency to see prices); writable only by the owning operator. A trigger creates a default row when a user gains the `operator` role; existing operators backfilled. |
 | `bookings.currency`, `subtotal`, `tax_rate`, `tax_amount` | Snapshot at booking time so later changes to an operator's settings never rewrite history. `total_price` = subtotal + tax. Existing rows backfilled as tax-free. |
 | `create_booking(...)` RPC (`SECURITY DEFINER`) | The only way to create a booking now. Validates vehicle availability, capacity, date, contact fields and stops; computes the price; inserts booking + stops in **one transaction**; returns the id. Client never sends a price. |
 | `calculate_booking_price` now returns `currency`, `taxRate`, `taxLabel`, `taxAmount`, `subtotal`, `pricesIncludeTax`, `additionalStopFee` | Same function feeds the live preview and the real insert, so the two can never disagree. Handles tax-inclusive pricing (backs tax out) and tax-exclusive (adds on top), rounded to 2 dp. |
@@ -36,6 +36,7 @@ branch `Dev` · closes #17 · migration `20260915120000_create_booking_rpc_and_o
 ### Changed
 | Item | Why |
 |---|---|
+| Platform defaults: currency `ZAR`, tax 15% `VAT` (DB defaults, `calculate_booking_price` fallbacks, `DEFAULT_CURRENCY` / `DEFAULT_TAX_RATE` in `src/lib/money.ts`) | Home market is South Africa. Operators elsewhere override in the Pricing tab. |
 | `mapVehicle(row, currency?)` signature; `mapBooking` fills currency/tax from row or defaults | Backwards-compatible with rows created before this migration. |
 | Operator dashboard "Total earnings" and fleet "Avg. rate/hour" formatted in the operator's currency | Was `$` regardless of country. |
 
@@ -44,7 +45,7 @@ branch `Dev` · closes #17 · migration `20260915120000_create_booking_rpc_and_o
 
 ### Not changed (deliberately)
 - Ride requests have no price yet, so they carry no currency; add when fares land (Phase 4).
-- Default currency stays `USD` (matching the previous `$` UI) until an operator sets theirs; the map's Johannesburg default suggests `ZAR` may be the better platform default — a one-line change in the migration if you want it.
+- Platform defaults are **ZAR and 15% VAT** (South Africa is the home market); operators elsewhere change theirs in the Pricing tab. Existing bookings from before this migration are backfilled as ZAR, tax-free.
 - Tax is a single flat rate per operator. Multi-rate (e.g. different rate per service class) or per-region tax within one operator is out of scope.
 
 ---

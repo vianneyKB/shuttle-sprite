@@ -3,7 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useMyOperatorSettings, useUpsertOperatorSettings, type OperatorSettingsInput } from "@/hooks/useOperatorSettings";
-import { CURRENCY_OPTIONS, formatMoney } from "@/lib/money";
+import { CURRENCY_OPTIONS, DEFAULT_CURRENCY, DEFAULT_TAX_RATE, formatMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -33,8 +33,8 @@ export const PricingSettings: React.FC = () => {
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),
     defaultValues: {
-      currency: "USD",
-      taxRate: 0,
+      currency: DEFAULT_CURRENCY,
+      taxRate: DEFAULT_TAX_RATE,
       taxLabel: "VAT",
       pricesIncludeTax: false,
       additionalStopFee: 15,

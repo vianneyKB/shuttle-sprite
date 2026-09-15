@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { OperatorSettings } from "@/types";
-import { DEFAULT_CURRENCY } from "@/lib/money";
+import { DEFAULT_CURRENCY, DEFAULT_TAX_RATE } from "@/lib/money";
 
 export type DbOperatorSettings = {
   operator_id: string;
@@ -26,7 +26,7 @@ export const mapOperatorSettings = (r: DbOperatorSettings): OperatorSettings => 
 export const defaultOperatorSettings = (operatorId: string): OperatorSettings => ({
   operatorId,
   currency: DEFAULT_CURRENCY,
-  taxRate: 0,
+  taxRate: DEFAULT_TAX_RATE,
   taxLabel: "VAT",
   pricesIncludeTax: false,
   additionalStopFee: 15,
