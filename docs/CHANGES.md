@@ -5,6 +5,23 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-15 — Deploy: fail loudly when Supabase secrets are missing
+branch `Dev` · in PR #43
+
+**Why:** https://vianneykb.github.io/shuttle-sprite/ was a white page. The deploy workflow succeeded every time, but the repo has no `VITE_SUPABASE_*` secrets, so the bundle shipped with an undefined Supabase URL and `createClient()` threw before React rendered. **Adding the two secrets is still a manual step** (Settings → Secrets and variables → Actions).
+
+### Added
+| Item | Why |
+|---|---|
+| `deploy.yml`: a step that fails the run with a clear error if either secret is unset | A green deploy of a broken bundle is worse than a red one. |
+| `deploy.yml`: `workflow_dispatch` trigger | Re-deploy from the Actions tab after adding secrets, without a push to `main`. |
+| `supabase/client.ts`: readable "not configured" message when env vars are missing | Local dev without `.env`, or any future misconfiguration, shows what's wrong instead of a blank page. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 11/11.
+
+---
+
 ## 2026-09-15 — #18 Transactional route-stop saving
 branch `Dev` · closes #18 · migration `20260915140000_save_route_stops_rpc.sql`
 
