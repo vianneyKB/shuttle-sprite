@@ -5,6 +5,21 @@ import type { Database } from './types';
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
 
+// A missing env var used to surface as a blank page (createClient throws
+// during module evaluation). Show a readable message instead.
+if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  const root = document.getElementById("root");
+  if (root) {
+    root.innerHTML =
+      '<main style="font-family:system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem;line-height:1.5">' +
+      "<h1>ShuttleBook isn’t configured</h1>" +
+      "<p>The app was built without <code>VITE_SUPABASE_URL</code> and/or <code>VITE_SUPABASE_PUBLISHABLE_KEY</code>.</p>" +
+      "<p>Local: copy <code>.env.example</code> to <code>.env</code>. GitHub Pages: add both as repository secrets, then re-run the deploy.</p>" +
+      "</main>";
+  }
+  throw new Error("Supabase environment variables are missing");
+}
+
 // Import the supabase client like this:
 // import { supabase } from "@/integrations/supabase/client";
 

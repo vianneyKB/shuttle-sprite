@@ -85,8 +85,9 @@ export const RouteManagement: React.FC = () => {
       toast.error("Add at least 2 named stops");
       return;
     }
+    let routeId: string | undefined;
     try {
-      const routeId = await upsert.mutateAsync({
+      routeId = await upsert.mutateAsync({
         id: editingId,
         input: {
           name: values.name,
@@ -106,6 +107,11 @@ export const RouteManagement: React.FC = () => {
       toast.success(editingId ? "Route updated" : "Route created");
       setOpen(false);
     } catch (e: unknown) {
+      // Stops are saved atomically by the RPC, but the route row itself was
+      // created a step earlier; don't leave a brand-new route with no stops.
+      if (!editingId && routeId) {
+        await remove.mutateAsync(routeId).catch(() => undefined);
+      }
       toast.error(e instanceof Error ? e.message : "Failed to save route");
     }
   };

@@ -5,6 +5,48 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-15 — Deploy: fail loudly when Supabase secrets are missing
+branch `Dev` · in PR #43
+
+**Why:** https://vianneykb.github.io/shuttle-sprite/ was a white page. The deploy workflow succeeded every time, but the repo has no `VITE_SUPABASE_*` secrets, so the bundle shipped with an undefined Supabase URL and `createClient()` threw before React rendered. **Adding the two secrets is still a manual step** (Settings → Secrets and variables → Actions).
+
+### Added
+| Item | Why |
+|---|---|
+| `deploy.yml`: a step that fails the run with a clear error if either secret is unset | A green deploy of a broken bundle is worse than a red one. |
+| `deploy.yml`: `workflow_dispatch` trigger | Re-deploy from the Actions tab after adding secrets, without a push to `main`. |
+| `supabase/client.ts`: readable "not configured" message when env vars are missing | Local dev without `.env`, or any future misconfiguration, shows what's wrong instead of a blank page. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 11/11.
+
+---
+
+## 2026-09-15 — #18 Transactional route-stop saving
+branch `Dev` · closes #18 · migration `20260915140000_save_route_stops_rpc.sql`
+
+**Why:** saving a route's stops was three separate requests from the browser — delete all stops, insert the new set, update the route's LineString — and the delete's error wasn't even checked. A failure part-way left a route with no stops and stale geometry.
+
+### Added
+| Item | Why |
+|---|---|
+| `save_route_stops(_route_id, _stops jsonb)` RPC (`SECURITY INVOKER`) | One call = one transaction: validates every stop (name, lat −90…90, lng −180…180, ≥ 2 stops) *before* writing, then replaces stops and rebuilds the GeoJSON LineString together. Returns the saved stops. RLS still applies; an explicit ownership check gives a clear error instead of a silent zero-row delete. |
+| Unique constraint `route_stops (route_id, stop_order)` | Two stops on one route can't share a position. |
+| `RouteManagement`: on a *new* route, if the stops call fails the just-created route row is removed | The route insert and the stops RPC are still two calls; this stops an empty route appearing in the list after a validation error. |
+
+### Removed
+| Item | Why |
+|---|---|
+| Client-side delete → insert → update sequence in `useSaveRouteStops` | Replaced by the RPC. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 11/11 · `vite build` OK. Migration runs on the Supabase preview branch when the PR opens.
+
+### Not changed (deliberately)
+- Route create + stops are still two round-trips. Folding both into one `create_route(...)` RPC is easy later, and will make more sense once route fares (per the taxi-bus research) land and the payload grows.
+
+---
+
 ## 2026-09-15 — #17 Server-side booking creation + per-operator currency & tax
 branch `Dev` · closes #17 · migration `20260915120000_create_booking_rpc_and_operator_pricing.sql`
 
