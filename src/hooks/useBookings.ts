@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { Booking, BookingStatus, BookingStop, PaymentMethod } from "@/types";
 
-type DbBooking = {
+export type DbBooking = {
   id: string;
   vehicle_id: string;
   customer_id: string;
@@ -27,7 +27,7 @@ type DbBooking = {
   updated_at: string;
 };
 
-type DbStop = {
+export type DbStop = {
   id: string;
   booking_id: string;
   address: string;
@@ -36,7 +36,7 @@ type DbStop = {
   notes: string | null;
 };
 
-const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
+export const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
   id: b.id,
   vehicleId: b.vehicle_id,
   customerName: b.customer_name,

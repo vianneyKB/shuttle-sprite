@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { Vehicle } from "@/types";
 
-type DbVehicle = {
+export type DbVehicle = {
   id: string;
   operator_id: string;
   make: string;
@@ -22,7 +22,7 @@ type DbVehicle = {
   updated_at: string;
 };
 
-const mapVehicle = (v: DbVehicle, operatorName = "Operator"): Vehicle => ({
+export const mapVehicle = (v: DbVehicle, operatorName = "Operator"): Vehicle => ({
   id: v.id,
   operatorId: v.operator_id,
   operatorName,

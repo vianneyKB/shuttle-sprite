@@ -3,7 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
 import type { PassengerQueueGroup, PaymentMethod, RideRequest, RideRequestStatus } from "@/types";
 
-type DbRideRequest = {
+export type DbRideRequest = {
   id: string;
   customer_id: string;
   route_id: string | null;
@@ -23,7 +23,7 @@ type DbRideRequest = {
   updated_at: string;
 };
 
-const mapRideRequest = (r: DbRideRequest): RideRequest => ({
+export const mapRideRequest = (r: DbRideRequest): RideRequest => ({
   id: r.id,
   customerId: r.customer_id,
   routeId: r.route_id ?? undefined,

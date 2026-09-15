@@ -69,6 +69,8 @@ supabase/migrations/
 | `npm run dev` | Dev server at http://localhost:8080/ |
 | `npm run build` | Production build (base `/shuttle-sprite/`) into `dist/` |
 | `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript check (no emit) |
+| `npm test` | Vitest unit tests |
 | `npm run preview` | Preview the production build locally |
 | `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
 
@@ -90,4 +92,6 @@ To publish:
 npm run deploy   # runs the build, then pushes dist/ to the gh-pages branch via gh-pages
 ```
 
-Then enable **GitHub Pages → Branch: `gh-pages`** in the repository settings. The live URL will be `https://<user>.github.io/shuttle-sprite/`.
+Then enable **GitHub Pages → Branch: `gh-pages`** in the repository settings.
+
+The `deploy.yml` workflow (push to `main`) reads `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY` from **Settings → Secrets and variables → Actions**; add both there or the deployed bundle will have no Supabase connection. The live URL will be `https://<user>.github.io/shuttle-sprite/`.

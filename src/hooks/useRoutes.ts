@@ -4,7 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import type { RouteStop, ShuttleRoute } from "@/types";
 import type { Json } from "@/integrations/supabase/types";
 
-type DbRoute = {
+export type DbRoute = {
   id: string;
   operator_id: string;
   name: string;
@@ -16,7 +16,7 @@ type DbRoute = {
   updated_at: string;
 };
 
-type DbRouteStop = {
+export type DbRouteStop = {
   id: string;
   route_id: string;
   name: string;
@@ -36,7 +36,7 @@ const mapStop = (s: DbRouteStop): RouteStop => ({
   lng: Number(s.lng),
 });
 
-const mapRoute = (r: DbRoute, stops: DbRouteStop[]): ShuttleRoute => ({
+export const mapRoute = (r: DbRoute, stops: DbRouteStop[]): ShuttleRoute => ({
   id: r.id,
   operatorId: r.operator_id,
   name: r.name,
