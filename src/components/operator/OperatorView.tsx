@@ -4,8 +4,9 @@ import { RouteManagement } from "./RouteManagement";
 import { PassengerQueue } from "./PassengerQueue";
 import { VehicleManagement } from "@/components/operator/VehicleManagement";
 import { BookingManagement } from "@/components/operator/BookingManagement";
+import { PricingSettings } from "./PricingSettings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, Car, Calendar, Route, Users } from "lucide-react";
+import { BarChart3, Car, Calendar, Coins, Route, Users } from "lucide-react";
 
 export const OperatorView: React.FC = () => (
   <section className="space-y-6 sm:space-y-8">
@@ -19,7 +20,7 @@ export const OperatorView: React.FC = () => (
     </header>
 
     <Tabs defaultValue="dashboard" className="w-full">
-      <TabsList className="scrollbar-thin-x w-full flex flex-wrap md:grid md:grid-cols-5 bg-white shadow-elevation rounded-xl p-1 h-auto min-h-12 gap-1">
+      <TabsList className="scrollbar-thin-x w-full flex flex-wrap md:grid md:grid-cols-6 bg-white shadow-elevation rounded-xl p-1 h-auto min-h-12 gap-1">
         <TabsTrigger value="dashboard" className="shrink-0 flex items-center gap-1.5 min-h-11 px-3 text-xs sm:text-sm data-[state=active]:gradient-primary data-[state=active]:text-white rounded-lg font-semibold">
           <BarChart3 className="w-4 h-4" /> Dashboard
         </TabsTrigger>
@@ -35,6 +36,9 @@ export const OperatorView: React.FC = () => (
         <TabsTrigger value="bookings" className="shrink-0 flex items-center gap-1.5 min-h-11 px-3 text-xs sm:text-sm data-[state=active]:gradient-primary data-[state=active]:text-white rounded-lg font-semibold">
           <Calendar className="w-4 h-4" /> Bookings
         </TabsTrigger>
+        <TabsTrigger value="pricing" className="shrink-0 flex items-center gap-1.5 min-h-11 px-3 text-xs sm:text-sm data-[state=active]:gradient-primary data-[state=active]:text-white rounded-lg font-semibold">
+          <Coins className="w-4 h-4" /> Pricing
+        </TabsTrigger>
       </TabsList>
 
       <section className="mt-8 space-y-6">
@@ -43,6 +47,7 @@ export const OperatorView: React.FC = () => (
         <TabsContent value="queue"><PassengerQueue /></TabsContent>
         <TabsContent value="vehicles"><VehicleManagement /></TabsContent>
         <TabsContent value="bookings"><BookingManagement /></TabsContent>
+        <TabsContent value="pricing"><PricingSettings /></TabsContent>
       </section>
     </Tabs>
   </section>

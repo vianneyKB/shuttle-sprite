@@ -16,6 +16,8 @@ export interface Vehicle {
   location: string;
   features: string[];
   image: string;
+  /** ISO 4217 code from the operator's settings; prices are in this currency. */
+  currency: string;
   available: boolean;
   rating: number;
   reviews: number;
@@ -45,23 +47,46 @@ export interface Booking {
   daysOfWeek: string[];
   time: string;
   duration: number;
+  /** Snapshot at booking time; later changes to operator settings never alter it. */
+  currency: string;
+  subtotal: number;
+  taxRate: number;
+  taxAmount: number;
   totalPrice: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
-  basePriceBreakdown: {
-    hourlyRate: number;
-    duration: number;
-    subtotal: number;
-    additionalStops: number;
-    additionalStopsCost: number;
-    recurringMultiplier: number;
-    finalTotal: number;
-  };
+  basePriceBreakdown: PriceBreakdown;
   status: 'pending' | 'confirmed' | 'completed' | 'cancelled';
   specialRequests?: string;
   isRecurring: boolean;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** Returned by calculate_booking_price and stored on bookings.price_breakdown. */
+export interface PriceBreakdown {
+  currency: string;
+  hourlyRate: number;
+  duration: number;
+  additionalStops: number;
+  additionalStopFee: number;
+  additionalStopsCost: number;
+  recurringMultiplier: number;
+  pricesIncludeTax: boolean;
+  subtotal: number;
+  taxRate: number;
+  taxLabel: string;
+  taxAmount: number;
+  finalTotal: number;
+}
+
+export interface OperatorSettings {
+  operatorId: string;
+  currency: string;
+  taxRate: number;
+  taxLabel: string;
+  pricesIncludeTax: boolean;
+  additionalStopFee: number;
 }
 
 export interface RouteStop {
@@ -138,5 +163,3 @@ export const VEHICLE_FEATURES = [
   'WiFi', 'AC', 'USB Charging', 'Leather Seats', 'GPS Tracking',
   'Entertainment System', 'Sound System', 'Refreshments', 'Premium Interior',
 ] as const;
-
-export const ADDITIONAL_STOP_COST = 15;

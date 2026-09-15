@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { Booking, BookingStatus, BookingStop, PaymentMethod } from "@/types";
+import type { Booking, BookingStatus, BookingStop, PaymentMethod, PriceBreakdown } from "@/types";
+import { DEFAULT_CURRENCY } from "@/lib/money";
 
 export type DbBooking = {
   id: string;
@@ -17,6 +18,10 @@ export type DbBooking = {
   time: string;
   duration: number;
   total_price: number;
+  currency?: string;
+  subtotal?: number;
+  tax_rate?: number;
+  tax_amount?: number;
   price_breakdown: Record<string, unknown>;
   status: BookingStatus;
   special_requests: string | null;
@@ -58,24 +63,42 @@ export const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
   daysOfWeek: b.days_of_week,
   time: b.time,
   duration: Number(b.duration),
+  currency: b.currency ?? DEFAULT_CURRENCY,
+  // Rows created before pricing snapshots were added: whole total, no tax.
+  subtotal: b.subtotal != null ? Number(b.subtotal) : Number(b.total_price),
+  taxRate: Number(b.tax_rate ?? 0),
+  taxAmount: Number(b.tax_amount ?? 0),
   totalPrice: Number(b.total_price),
   paymentMethod: b.payment_method ?? "cash",
   paymentStatus: (b.payment_status as Booking["paymentStatus"]) ?? "not_required",
-  basePriceBreakdown: (b.price_breakdown as Booking["basePriceBreakdown"]) ?? {
-    hourlyRate: 0,
-    duration: 0,
-    subtotal: 0,
-    additionalStops: 0,
-    additionalStopsCost: 0,
-    recurringMultiplier: 1,
-    finalTotal: Number(b.total_price),
-  },
+  basePriceBreakdown: normaliseBreakdown(b),
   status: b.status,
   specialRequests: b.special_requests ?? undefined,
   isRecurring: b.is_recurring,
   createdAt: new Date(b.created_at),
   updatedAt: new Date(b.updated_at),
 });
+
+/** price_breakdown from older rows lacks the currency/tax keys; fill them from the row. */
+const normaliseBreakdown = (b: DbBooking): PriceBreakdown => {
+  const raw = (b.price_breakdown ?? {}) as Partial<PriceBreakdown>;
+  const total = Number(b.total_price);
+  return {
+    currency: raw.currency ?? b.currency ?? DEFAULT_CURRENCY,
+    hourlyRate: Number(raw.hourlyRate ?? 0),
+    duration: Number(raw.duration ?? b.duration ?? 0),
+    additionalStops: Number(raw.additionalStops ?? 0),
+    additionalStopFee: Number(raw.additionalStopFee ?? 0),
+    additionalStopsCost: Number(raw.additionalStopsCost ?? 0),
+    recurringMultiplier: Number(raw.recurringMultiplier ?? 1),
+    pricesIncludeTax: Boolean(raw.pricesIncludeTax ?? false),
+    subtotal: Number(raw.subtotal ?? b.subtotal ?? total),
+    taxRate: Number(raw.taxRate ?? b.tax_rate ?? 0),
+    taxLabel: raw.taxLabel ?? "Tax",
+    taxAmount: Number(raw.taxAmount ?? b.tax_amount ?? 0),
+    finalTotal: Number(raw.finalTotal ?? total),
+  };
+};
 
 const fetchBookingsWithStops = async (bookings: DbBooking[]): Promise<Booking[]> => {
   if (bookings.length === 0) return [];
@@ -159,15 +182,7 @@ export const useCalculatePrice = () =>
         _days_of_week_count: args.daysOfWeekCount,
       });
       if (error) throw error;
-      return data as {
-        hourlyRate: number;
-        duration: number;
-        subtotal: number;
-        additionalStops: number;
-        additionalStopsCost: number;
-        recurringMultiplier: number;
-        finalTotal: number;
-      };
+      return data as unknown as PriceBreakdown;
     },
   });
 
@@ -177,56 +192,28 @@ export const useCreateBooking = () => {
   return useMutation({
     mutationFn: async (input: BookingInput) => {
       if (!user) throw new Error("Not authenticated");
-      const days = input.daysOfWeek ?? [];
-      const { data: priceData, error: priceErr } = await supabase.rpc(
-        "calculate_booking_price",
-        {
-          _vehicle_id: input.vehicleId,
-          _duration: input.duration,
-          _stop_count: input.stops.length,
-          _days_of_week_count: days.length,
-        }
-      );
-      if (priceErr) throw priceErr;
-      const price = priceData as { finalTotal: number };
-      const paymentMethod = input.paymentMethod ?? "cash";
-      const paymentStatus = paymentMethod === "prepay" ? "pending" : "not_required";
-
-      const { data: created, error } = await supabase
-        .from("bookings")
-        .insert({
-          vehicle_id: input.vehicleId,
-          customer_id: user.id,
-          customer_name: input.customerName,
-          customer_email: input.customerEmail,
-          customer_phone: input.customerPhone,
-          passengers: input.passengers,
-          start_date: input.startDate,
-          time: input.time,
-          duration: input.duration,
-          days_of_week: days,
-          is_recurring: days.length > 0,
-          special_requests: input.specialRequests ?? null,
-          total_price: price.finalTotal,
-          price_breakdown: priceData,
-          status: "pending",
-          payment_method: paymentMethod,
-          payment_status: paymentStatus,
-        })
-        .select("id")
-        .single();
+      // Pricing, validation and the booking + stops insert all happen inside
+      // create_booking (SECURITY DEFINER); the client never sends a price.
+      const { data, error } = await supabase.rpc("create_booking", {
+        _vehicle_id: input.vehicleId,
+        _customer_name: input.customerName,
+        _customer_email: input.customerEmail,
+        _customer_phone: input.customerPhone,
+        _passengers: input.passengers,
+        _start_date: input.startDate,
+        _time: input.time,
+        _duration: input.duration,
+        _stops: input.stops.map((s) => ({
+          address: s.address,
+          type: s.type,
+          notes: s.notes ?? null,
+        })),
+        _days_of_week: input.daysOfWeek ?? [],
+        _special_requests: input.specialRequests ?? null,
+        _payment_method: input.paymentMethod ?? "cash",
+      });
       if (error) throw error;
-
-      const stopsPayload = input.stops.map((s, idx) => ({
-        booking_id: created.id,
-        address: s.address,
-        type: s.type,
-        stop_order: idx,
-        notes: s.notes ?? null,
-      }));
-      const { error: stopsErr } = await supabase.from("booking_stops").insert(stopsPayload);
-      if (stopsErr) throw stopsErr;
-      return created.id;
+      return data as string;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bookings"] }),
   });

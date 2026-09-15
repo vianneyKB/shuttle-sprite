@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, Clock, Users, MapPin, Phone, Mail, Car, DollarSign, Loader2 } from "lucide-react";
 import type { Booking } from "@/types";
 import { toast } from "sonner";
+import { formatMoney } from "@/lib/money";
 
 export const BookingManagement: React.FC = () => {
   const { data: bookings = [], isLoading } = useOperatorBookings();
@@ -59,7 +60,12 @@ export const BookingManagement: React.FC = () => {
                 {booking.paymentMethod} · {booking.paymentStatus.replace("_", " ")}
               </p>
             </>
-            <p className="text-2xl font-bold text-primary-600">${booking.totalPrice}</p>
+            <p className="text-right">
+              <span className="text-2xl font-bold text-primary-600">{formatMoney(booking.totalPrice, booking.currency)}</span>
+              {booking.taxAmount > 0 && (
+                <span className="block text-xs text-secondary-500">incl. {formatMoney(booking.taxAmount, booking.currency)} tax</span>
+              )}
+            </p>
           </header>
           <ul className="space-y-1 text-sm list-none p-0">
             {booking.stops.map((stop) => (

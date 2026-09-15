@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Star, Users, MapPin, Clock, CheckCircle, XCircle } from 'lucide-react';
 import { Vehicle } from '@/types';
+import { formatMoney } from '@/lib/money';
 import { useAppContext } from '@/context/AppContext';
 
 interface VehicleCardProps {
@@ -108,10 +109,10 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
               </div>
               <div className="text-right">
                 <div className="text-2xl font-bold text-primary-600">
-                  ${vehicle.pricePerHour}
+                  {formatMoney(vehicle.pricePerHour, vehicle.currency)}
                 </div>
                 <div className="text-xs text-secondary-500">
-                  ${vehicle.pricePerDay}/day
+                  {formatMoney(vehicle.pricePerDay, vehicle.currency)}/day
                 </div>
               </div>
             </div>

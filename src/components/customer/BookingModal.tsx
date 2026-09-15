@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAppContext } from '@/context/AppContext';
 import { useCreateBooking, useCalculatePrice } from '@/hooks/useBookings';
+import { formatMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -275,18 +276,36 @@ export const BookingModal: React.FC = () => {
             ) : breakdown ? (
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span>Base Rate ({breakdown.duration}h × ${breakdown.hourlyRate})</span>
-                  <span>${breakdown.subtotal}</span>
+                  <span>Base rate ({breakdown.duration}h × {formatMoney(breakdown.hourlyRate, breakdown.currency)})</span>
+                  <span>{formatMoney(breakdown.hourlyRate * breakdown.duration, breakdown.currency)}</span>
                 </div>
                 {breakdown.additionalStops > 0 && (
                   <div className="flex justify-between">
-                    <span>Additional Stops ({breakdown.additionalStops})</span>
-                    <span>${breakdown.additionalStopsCost}</span>
+                    <span>Additional stops ({breakdown.additionalStops} × {formatMoney(breakdown.additionalStopFee, breakdown.currency)})</span>
+                    <span>{formatMoney(breakdown.additionalStopsCost, breakdown.currency)}</span>
                   </div>
+                )}
+                {breakdown.recurringMultiplier > 1 && (
+                  <div className="flex justify-between">
+                    <span>Recurring ({breakdown.recurringMultiplier} days / week)</span>
+                    <span>× {breakdown.recurringMultiplier}</span>
+                  </div>
+                )}
+                {breakdown.taxRate > 0 && (
+                  <>
+                    <div className="flex justify-between pt-2 border-t border-primary-200">
+                      <span>Subtotal{breakdown.pricesIncludeTax ? ' (excl. tax)' : ''}</span>
+                      <span>{formatMoney(breakdown.subtotal, breakdown.currency)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>{breakdown.taxLabel} ({breakdown.taxRate}%)</span>
+                      <span>{formatMoney(breakdown.taxAmount, breakdown.currency)}</span>
+                    </div>
+                  </>
                 )}
                 <div className="flex justify-between font-semibold text-lg pt-2 border-t border-primary-200">
                   <span>Total</span>
-                  <span>${breakdown.finalTotal}</span>
+                  <span>{formatMoney(breakdown.finalTotal, breakdown.currency)}</span>
                 </div>
               </div>
             ) : (

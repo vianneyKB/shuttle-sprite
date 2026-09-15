@@ -56,11 +56,40 @@ describe("mapBooking", () => {
     expect(b.createdAt).toBeInstanceOf(Date);
   });
 
-  it("defaults payment fields for legacy rows without them", () => {
+  it("maps the pricing snapshot (currency, subtotal, tax)", () => {
+    const b = mapBooking(
+      {
+        ...row,
+        currency: "ZAR",
+        subtotal: num("217.39"),
+        tax_rate: num("15.00"),
+        tax_amount: num("32.61"),
+        total_price: num("250.00"),
+        price_breakdown: { ...row.price_breakdown, currency: "ZAR", taxRate: 15, taxLabel: "VAT", taxAmount: 32.61, subtotal: 217.39 },
+      },
+      []
+    );
+    expect(b.currency).toBe("ZAR");
+    expect(b.subtotal).toBe(217.39);
+    expect(b.taxRate).toBe(15);
+    expect(b.taxAmount).toBe(32.61);
+    expect(b.totalPrice).toBe(250);
+    expect(b.basePriceBreakdown.taxLabel).toBe("VAT");
+    expect(b.basePriceBreakdown.currency).toBe("ZAR");
+  });
+
+  it("defaults payment and pricing fields for legacy rows without them", () => {
     const { payment_method: _pm, payment_status: _ps, ...legacy } = row;
     const b = mapBooking(legacy as DbBooking, []);
     expect(b.paymentMethod).toBe("cash");
     expect(b.paymentStatus).toBe("not_required");
+    // No snapshot columns → whole total is the subtotal, no tax, platform default currency.
+    expect(b.currency).toBe("ZAR");
+    expect(b.subtotal).toBe(250);
+    expect(b.taxRate).toBe(0);
+    expect(b.taxAmount).toBe(0);
+    expect(b.basePriceBreakdown.currency).toBe("ZAR");
+    expect(b.basePriceBreakdown.additionalStopFee).toBe(0);
   });
 });
 
@@ -147,6 +176,8 @@ describe("mapVehicle", () => {
       updated_at: "2026-09-15T08:00:00Z",
     };
     const v = mapVehicle(row);
+    expect(v.currency).toBe("ZAR");
+    expect(mapVehicle(row, "USD").currency).toBe("USD");
     expect(v.pricePerHour).toBe(45.5);
     expect(v.pricePerDay).toBe(320);
     expect(v.rating).toBe(4.5);

@@ -8,6 +8,8 @@ import {
   useToggleVehicleAvailability,
   useDeleteVehicle,
 } from '@/hooks/useVehicles';
+import { useMyOperatorSettings } from '@/hooks/useOperatorSettings';
+import { formatMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -35,6 +37,7 @@ type VehicleFormValues = z.infer<typeof vehicleSchema>;
 
 export const VehicleManagement: React.FC = () => {
   const { data: vehicles = [], isLoading } = useMyVehicles();
+  const { data: settings } = useMyOperatorSettings();
   const upsert = useUpsertVehicle();
   const toggle = useToggleVehicleAvailability();
   const remove = useDeleteVehicle();
@@ -128,7 +131,7 @@ export const VehicleManagement: React.FC = () => {
           { label: 'Total Vehicles', value: vehicles.length, Icon: Car, bg: 'bg-blue-50', color: 'text-blue-600' },
           { label: 'Available', value: vehicles.filter(v => v.available).length, Icon: ToggleRight, bg: 'bg-green-50', color: 'text-green-600' },
           { label: 'Total Capacity', value: vehicles.reduce((s, v) => s + v.capacity, 0), Icon: Users, bg: 'bg-purple-50', color: 'text-purple-600' },
-          { label: 'Avg. Rate/Hour', value: `$${Math.round(vehicles.reduce((s, v) => s + v.pricePerHour, 0) / (vehicles.length || 1))}`, Icon: DollarSign, bg: 'bg-emerald-50', color: 'text-emerald-600' },
+          { label: 'Avg. Rate/Hour', value: formatMoney(Math.round(vehicles.reduce((s, v) => s + v.pricePerHour, 0) / (vehicles.length || 1)), settings?.currency), Icon: DollarSign, bg: 'bg-emerald-50', color: 'text-emerald-600' },
         ].map((s, i) => (
           <Card key={i}><CardContent className="p-4"><div className="flex items-center space-x-3">
             <div className={`${s.bg} p-2 rounded-lg`}><s.Icon className={`w-5 h-5 ${s.color}`} /></div>
@@ -209,8 +212,8 @@ export const VehicleManagement: React.FC = () => {
                 { name: 'model', label: 'Model' },
                 { name: 'year', label: 'Year', type: 'number' },
                 { name: 'capacity', label: 'Capacity', type: 'number' },
-                { name: 'pricePerHour', label: 'Price / Hour', type: 'number' },
-                { name: 'pricePerDay', label: 'Price / Day', type: 'number' },
+                { name: 'pricePerHour', label: `Price / Hour (${settings?.currency ?? '…'})`, type: 'number' },
+                { name: 'pricePerDay', label: `Price / Day (${settings?.currency ?? '…'})`, type: 'number' },
                 { name: 'location', label: 'Location' },
                 { name: 'image', label: 'Image URL (optional)' },
               ] as ReadonlyArray<{ name: keyof VehicleFormValues; label: string; type?: string }>).map(f => (
