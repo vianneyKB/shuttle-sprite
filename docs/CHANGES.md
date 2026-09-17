@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-17 — #20 + #21 Dispatch: operators act on ride requests
+branch `Dev` · closes #20, #21 · migration `20260917100000_ride_request_dispatch.sql`
+
+**Why:** the Queue tab was view-only. `ride_requests` had a status column but nothing recorded which operator took a request or which vehicle carries it, and status could only be changed by a raw UPDATE with no rules. This is the biggest product gap from the review: the operational loop now closes on the operator side.
+
+### Added
+| Item | Why |
+|---|---|
+| `ride_requests.operator_id`, `vehicle_id`, `assigned_at`, `started_at`, `completed_at` (+ indexes) | Record who took the request, with what, and when each step happened. Timestamps feed the passenger timeline in #23. |
+| `dispatch_ride_request(_id, _status?, _vehicle_id?)` RPC (`SECURITY INVOKER`) | The one way operators change a request. Enforces the state machine awaiting → confirmed → in_progress → completed (cancel from any active state), refuses a Start without a vehicle, checks the vehicle is in the caller's fleet, stamps `operator_id`/timestamps, and marks cash rides `paid` on completion. A request taken by one operator can't be changed by another. |
+| RLS: operators keep SELECT/UPDATE on requests they've taken, even if the route is deleted; can't take a request another operator already has | Ownership follows the dispatcher, not only the route. |
+| `useOperatorRideRequests()` (waiting + confirmed + in-progress rows) and `useDispatchRideRequest()` | Per-request data and the single mutation the UI uses. |
+| **Queue tab rebuilt** (`PassengerQueue.tsx`): each origin → destination group expands to its individual requests with **Confirm / Assign vehicle / Start / Complete / Cancel**; **"Confirm all"** with one vehicle for the whole group (warns if passengers exceed seats); an **Active rides** section for confirmed and in-progress rides | Matches how ranks work: fill a direction, assign a taxi, go. |
+| `RideRequest` domain type gains `operatorId`, `vehicleId`, `assignedAt`, `startedAt`, `completedAt`; mapper + 1 test (suite now 12) | |
+
+### Removed
+| Item | Why |
+|---|---|
+| `useUpdateRideRequestStatus` (raw `update … set status`) | Replaced by the RPC so transitions can't skip states. |
+| The aggregated-only queue cards | Superseded by the expandable groups; `get_passenger_queue` RPC and `usePassengerQueue` are kept for now (still valid, may back a dashboard stat). |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 12/12 · `vite build` OK. Migration runs on the Supabase preview branch when the PR opens.
+
+### Not changed (deliberately)
+- Passengers don't yet see the assigned vehicle or a live timeline — that's #23, and it needs Realtime (#22) to be useful.
+- "Departs when full" seat counter is not shown; needs a fare/seat model (see taxi-bus research).
+
+---
+
 ## 2026-09-15 — Fix stale Supabase project ref
 branch `Dev`
 

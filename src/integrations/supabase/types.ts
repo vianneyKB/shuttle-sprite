@@ -224,6 +224,11 @@ export type Database = {
           payment_status: string
           route_id: string | null
           scheduled_at: string | null
+          operator_id: string | null
+          vehicle_id: string | null
+          assigned_at: string | null
+          started_at: string | null
+          completed_at: string | null
           status: Database["public"]["Enums"]["ride_request_status"]
           updated_at: string
         }
@@ -243,6 +248,11 @@ export type Database = {
           payment_status?: string
           route_id?: string | null
           scheduled_at?: string | null
+          operator_id?: string | null
+          vehicle_id?: string | null
+          assigned_at?: string | null
+          started_at?: string | null
+          completed_at?: string | null
           status?: Database["public"]["Enums"]["ride_request_status"]
           updated_at?: string
         }
@@ -262,15 +272,20 @@ export type Database = {
           payment_status?: string
           route_id?: string | null
           scheduled_at?: string | null
+          operator_id?: string | null
+          vehicle_id?: string | null
+          assigned_at?: string | null
+          started_at?: string | null
+          completed_at?: string | null
           status?: Database["public"]["Enums"]["ride_request_status"]
           updated_at?: string
         }
         Relationships: [
           {
-            foreignKeyName: "ride_requests_route_id_fkey"
-            columns: ["route_id"]
+            foreignKeyName: "ride_requests_vehicle_id_fkey"
+            columns: ["vehicle_id"]
             isOneToOne: false
-            referencedRelation: "shuttle_routes"
+            referencedRelation: "vehicles"
             referencedColumns: ["id"]
           },
         ]
@@ -473,6 +488,14 @@ export type Database = {
           request_count: number
           total_passengers: number
         }[]
+      }
+      dispatch_ride_request: {
+        Args: {
+          _id: string
+          _status?: Database["public"]["Enums"]["ride_request_status"] | null
+          _vehicle_id?: string | null
+        }
+        Returns: Database["public"]["Tables"]["ride_requests"]["Row"]
       }
       save_route_stops: {
         Args: {

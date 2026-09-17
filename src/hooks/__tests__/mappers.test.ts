@@ -152,6 +152,42 @@ describe("mapRideRequest", () => {
     expect(r.notes).toBeUndefined();
     expect(r.originLat).toBe(-26.1);
     expect(r.status).toBe("awaiting");
+    // Not yet dispatched (and legacy rows lack the columns entirely).
+    expect(r.operatorId).toBeUndefined();
+    expect(r.vehicleId).toBeUndefined();
+    expect(r.assignedAt).toBeUndefined();
+  });
+
+  it("maps dispatch columns once an operator has taken the request", () => {
+    const r = mapRideRequest({
+      id: "q2",
+      customer_id: "c1",
+      route_id: "r1",
+      origin_name: "A",
+      origin_lat: 1,
+      origin_lng: 2,
+      destination_name: "B",
+      destination_lat: 3,
+      destination_lng: 4,
+      passengers: 1,
+      payment_method: "cash",
+      payment_status: "not_required",
+      status: "in_progress",
+      scheduled_at: null,
+      notes: null,
+      operator_id: "op1",
+      vehicle_id: "v9",
+      assigned_at: "2026-09-17T08:00:00Z",
+      started_at: "2026-09-17T08:10:00Z",
+      completed_at: null,
+      created_at: "2026-09-17T07:00:00Z",
+      updated_at: "2026-09-17T08:10:00Z",
+    });
+    expect(r.operatorId).toBe("op1");
+    expect(r.vehicleId).toBe("v9");
+    expect(r.assignedAt).toBeInstanceOf(Date);
+    expect(r.startedAt?.toISOString()).toBe("2026-09-17T08:10:00.000Z");
+    expect(r.completedAt).toBeUndefined();
   });
 });
 
