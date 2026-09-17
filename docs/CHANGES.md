@@ -5,6 +5,30 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-17 — #19 Supabase advisor findings
+branch `fix/advisor-findings` → `Dev` · closes #19 · migration `20260917120000_advisor_fixes_rls_consolidation.sql`
+
+**Why:** the owner exported the Security and Performance advisor reports for the live project (45 findings: 5 security, 40 performance). Two security items needed SQL; the performance items were all RLS-shaped — `auth.uid()` re-evaluated per row in 28 policies, and 11 table/action pairs with 2–3 overlapping permissive policies.
+
+### Changed
+| Item | Why |
+|---|---|
+| **Every RLS policy on the 9 app tables dropped and recreated** — one policy per table/action, named `<table>_<action>`, all using `(select auth.uid())` | Clears all 28 `auth_rls_initplan` and all 11 `multiple_permissive_policies` warnings. Access rules are unchanged: each new policy is the OR of the ones it replaces. Also removes any policy that was added to the live DB outside migrations, so the end state is exactly what the repo says. |
+| `has_role(user, role)` only answers about the caller (or about anyone, if the caller is admin) | It was `SECURITY DEFINER` and callable by any signed-in user with any user id — a way to enumerate who is an admin/operator. RLS only ever asks about `auth.uid()`, so nothing else changes. |
+| `revoke execute` on `rls_auto_enable()` from anon/authenticated (guarded — only if the function exists) | Flagged as a public `SECURITY DEFINER` function; it isn't in any migration (scaffolding leftover). |
+
+### Accepted, not changed
+| Finding | Why |
+|---|---|
+| `create_booking()` is `SECURITY DEFINER` and callable by `authenticated` | Intentional — it *is* the booking API; it validates everything and computes the price itself. |
+| 3 `unused_index` (INFO) on `route_stops.route_id`, `ride_requests.status`, `ride_requests.route_id` | The DB has almost no rows; these back FKs and the queue's status filter. Revisit if still unused with real traffic. |
+| **Leaked-password protection disabled** | Dashboard toggle, not SQL — **owner action**: Authentication → Settings → Password → enable *Leaked password protection*. |
+
+### Verification
+No client code changed; `npm run lint` / `typecheck` / `test` / `build` unaffected. Migration runs on the Supabase preview branch for the PR. After merge, re-run both advisors — expected remaining: `create_booking` (accepted) and leaked-password (until toggled).
+
+---
+
 ## 2026-09-17 — #20 + #21 Dispatch: operators act on ride requests
 branch `Dev` · closes #20, #21 · migration `20260917100000_ride_request_dispatch.sql`
 
