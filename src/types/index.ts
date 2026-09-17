@@ -128,6 +128,12 @@ export interface RideRequest {
   status: RideRequestStatus;
   scheduledAt?: string;
   notes?: string;
+  /** Dispatch: set when an operator confirms / assigns a vehicle. */
+  operatorId?: string;
+  vehicleId?: string;
+  assignedAt?: Date;
+  startedAt?: Date;
+  completedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }

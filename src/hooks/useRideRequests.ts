@@ -19,6 +19,11 @@ export type DbRideRequest = {
   status: RideRequestStatus;
   scheduled_at: string | null;
   notes: string | null;
+  operator_id?: string | null;
+  vehicle_id?: string | null;
+  assigned_at?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -39,6 +44,11 @@ export const mapRideRequest = (r: DbRideRequest): RideRequest => ({
   status: r.status,
   scheduledAt: r.scheduled_at ?? undefined,
   notes: r.notes ?? undefined,
+  operatorId: r.operator_id ?? undefined,
+  vehicleId: r.vehicle_id ?? undefined,
+  assignedAt: r.assigned_at ? new Date(r.assigned_at) : undefined,
+  startedAt: r.started_at ? new Date(r.started_at) : undefined,
+  completedAt: r.completed_at ? new Date(r.completed_at) : undefined,
   createdAt: new Date(r.created_at),
   updatedAt: new Date(r.updated_at),
 });
@@ -67,6 +77,24 @@ export const useMyRideRequests = () => {
         .select("*")
         .eq("customer_id", user!.id)
         .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as unknown as DbRideRequest[]).map(mapRideRequest);
+    },
+  });
+};
+
+/** Individual requests an operator can act on: waiting, confirmed, or under way. RLS scopes to their routes / their own. */
+export const useOperatorRideRequests = () => {
+  const { user, isOperator, isAdmin } = useAuth();
+  return useQuery({
+    queryKey: ["ride_requests", "operator", user?.id],
+    enabled: !!user && (isOperator || isAdmin),
+    queryFn: async (): Promise<RideRequest[]> => {
+      const { data, error } = await supabase
+        .from("ride_requests")
+        .select("*")
+        .in("status", ["awaiting", "confirmed", "in_progress"])
+        .order("created_at", { ascending: true });
       if (error) throw error;
       return ((data ?? []) as unknown as DbRideRequest[]).map(mapRideRequest);
     },
@@ -140,15 +168,26 @@ export const useCancelRideRequest = () => {
   });
 };
 
-export const useUpdateRideRequestStatus = () => {
+export type DispatchInput = {
+  id: string;
+  /** New status; omit to only (re)assign a vehicle. */
+  status?: RideRequestStatus;
+  /** Vehicle from the operator's own fleet; omit to leave unchanged. */
+  vehicleId?: string;
+};
+
+/** All operator-side changes go through dispatch_ride_request, which enforces the status state machine. */
+export const useDispatchRideRequest = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status }: { id: string; status: RideRequestStatus }) => {
-      const { error } = await supabase
-        .from("ride_requests")
-        .update({ status })
-        .eq("id", id);
+    mutationFn: async ({ id, status, vehicleId }: DispatchInput): Promise<RideRequest> => {
+      const { data, error } = await supabase.rpc("dispatch_ride_request", {
+        _id: id,
+        _status: status ?? null,
+        _vehicle_id: vehicleId ?? null,
+      });
       if (error) throw error;
+      return mapRideRequest(data as unknown as DbRideRequest);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ride_requests"] });

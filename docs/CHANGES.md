@@ -5,6 +5,75 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-17 — #19 Supabase advisor findings
+branch `fix/advisor-findings` → `Dev` · closes #19 · migration `20260917120000_advisor_fixes_rls_consolidation.sql`
+
+**Why:** the owner exported the Security and Performance advisor reports for the live project (45 findings: 5 security, 40 performance). Two security items needed SQL; the performance items were all RLS-shaped — `auth.uid()` re-evaluated per row in 28 policies, and 11 table/action pairs with 2–3 overlapping permissive policies.
+
+### Changed
+| Item | Why |
+|---|---|
+| **Every RLS policy on the 9 app tables dropped and recreated** — one policy per table/action, named `<table>_<action>`, all using `(select auth.uid())` | Clears all 28 `auth_rls_initplan` and all 11 `multiple_permissive_policies` warnings. Access rules are unchanged: each new policy is the OR of the ones it replaces. Also removes any policy that was added to the live DB outside migrations, so the end state is exactly what the repo says. |
+| `has_role(user, role)` only answers about the caller (or about anyone, if the caller is admin) | It was `SECURITY DEFINER` and callable by any signed-in user with any user id — a way to enumerate who is an admin/operator. RLS only ever asks about `auth.uid()`, so nothing else changes. |
+| `revoke execute` on `rls_auto_enable()` from anon/authenticated (guarded — only if the function exists) | Flagged as a public `SECURITY DEFINER` function; it isn't in any migration (scaffolding leftover). |
+
+### Accepted, not changed
+| Finding | Why |
+|---|---|
+| `create_booking()` is `SECURITY DEFINER` and callable by `authenticated` | Intentional — it *is* the booking API; it validates everything and computes the price itself. |
+| 3 `unused_index` (INFO) on `route_stops.route_id`, `ride_requests.status`, `ride_requests.route_id` | The DB has almost no rows; these back FKs and the queue's status filter. Revisit if still unused with real traffic. |
+| **Leaked-password protection disabled** | Dashboard toggle, not SQL — **owner action**: Authentication → Settings → Password → enable *Leaked password protection*. |
+
+### Verification
+No client code changed; `npm run lint` / `typecheck` / `test` / `build` unaffected. Migration runs on the Supabase preview branch for the PR. After merge, re-run both advisors — expected remaining: `create_booking` (accepted) and leaked-password (until toggled).
+
+---
+
+## 2026-09-17 — #20 + #21 Dispatch: operators act on ride requests
+branch `Dev` · closes #20, #21 · migration `20260917100000_ride_request_dispatch.sql`
+
+**Why:** the Queue tab was view-only. `ride_requests` had a status column but nothing recorded which operator took a request or which vehicle carries it, and status could only be changed by a raw UPDATE with no rules. This is the biggest product gap from the review: the operational loop now closes on the operator side.
+
+### Added
+| Item | Why |
+|---|---|
+| `ride_requests.operator_id`, `vehicle_id`, `assigned_at`, `started_at`, `completed_at` (+ indexes) | Record who took the request, with what, and when each step happened. Timestamps feed the passenger timeline in #23. |
+| `dispatch_ride_request(_id, _status?, _vehicle_id?)` RPC (`SECURITY INVOKER`) | The one way operators change a request. Enforces the state machine awaiting → confirmed → in_progress → completed (cancel from any active state), refuses a Start without a vehicle, checks the vehicle is in the caller's fleet, stamps `operator_id`/timestamps, and marks cash rides `paid` on completion. A request taken by one operator can't be changed by another. |
+| RLS: operators keep SELECT/UPDATE on requests they've taken, even if the route is deleted; can't take a request another operator already has | Ownership follows the dispatcher, not only the route. |
+| `useOperatorRideRequests()` (waiting + confirmed + in-progress rows) and `useDispatchRideRequest()` | Per-request data and the single mutation the UI uses. |
+| **Queue tab rebuilt** (`PassengerQueue.tsx`): each origin → destination group expands to its individual requests with **Confirm / Assign vehicle / Start / Complete / Cancel**; **"Confirm all"** with one vehicle for the whole group (warns if passengers exceed seats); an **Active rides** section for confirmed and in-progress rides | Matches how ranks work: fill a direction, assign a taxi, go. |
+| `RideRequest` domain type gains `operatorId`, `vehicleId`, `assignedAt`, `startedAt`, `completedAt`; mapper + 1 test (suite now 12) | |
+
+### Removed
+| Item | Why |
+|---|---|
+| `useUpdateRideRequestStatus` (raw `update … set status`) | Replaced by the RPC so transitions can't skip states. |
+| The aggregated-only queue cards | Superseded by the expandable groups; `get_passenger_queue` RPC and `usePassengerQueue` are kept for now (still valid, may back a dashboard stat). |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 12/12 · `vite build` OK. Migration runs on the Supabase preview branch when the PR opens.
+
+### Not changed (deliberately)
+- Passengers don't yet see the assigned vehicle or a live timeline — that's #23, and it needs Realtime (#22) to be useful.
+- "Departs when full" seat counter is not shown; needs a fare/seat model (see taxi-bus research).
+
+---
+
+## 2026-09-15 — Fix stale Supabase project ref
+branch `Dev`
+
+**Why:** `supabase/config.toml` pointed at `syiixyjicrqrohmqasyc`, which is not the project the app's data lives in. The live project — the one the Supabase GitHub integration deploys migrations to and whose publishable key the site uses — is `dyynbzbpitjoyfrxnxux`. Deploying with the old URL + the real key produced "Invalid API key" on sign-in.
+
+### Changed
+| Item | Why |
+|---|---|
+| `supabase/config.toml` project_id → `dyynbzbpitjoyfrxnxux` | Match the real project so the CLI and future readers link to the right database. |
+| `.env.example` shows the real project URL | One less thing to get wrong on local setup. |
+
+**Manual:** the `VITE_SUPABASE_URL` repository secret must be `https://dyynbzbpitjoyfrxnxux.supabase.co`.
+
+---
+
 ## 2026-09-15 — Deploy: fail loudly when Supabase secrets are missing
 branch `Dev` · in PR #43
 
