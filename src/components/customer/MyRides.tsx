@@ -1,6 +1,7 @@
 import React from "react";
 import { useMyBookings, useCancelBooking } from "@/hooks/useBookings";
 import { useMyRideRequests, useCancelRideRequest } from "@/hooks/useRideRequests";
+import { useRideRequestsRealtime } from "@/hooks/useRideRequestsRealtime";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,22 @@ export const MyRides: React.FC = () => {
   const { data: requests = [], isLoading: rLoad } = useMyRideRequests();
   const cancelBooking = useCancelBooking();
   const cancelRequest = useCancelRideRequest();
+
+  // Live updates: refetch on any change to this passenger's requests and
+  // tell them when an operator moves a ride along.
+  useRideRequestsRealtime("customer", (payload) => {
+    if (payload.eventType !== "UPDATE") return;
+    const before = (payload.old as { status?: string }).status;
+    const after = (payload.new as { status?: string }).status;
+    if (!after || before === after) return;
+    const label: Record<string, string> = {
+      confirmed: "Your ride has been confirmed",
+      in_progress: "Your ride is on its way",
+      completed: "Ride completed — thanks for travelling with us",
+      cancelled: "Your ride request was cancelled",
+    };
+    if (label[after]) toast.info(label[after]);
+  });
 
   const statusColor = (s: string) =>
     ({

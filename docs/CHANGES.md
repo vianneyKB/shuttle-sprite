@@ -5,6 +5,28 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-17 — #22 Realtime for ride requests
+branch `feat/realtime-ride-requests` → `Dev` · closes #22 · migration `20260917140000_realtime_ride_requests.sql`
+
+**Why:** passengers and operators only saw a snapshot from page load. A new request, or an operator confirming one, needed a manual refresh to appear on the other side.
+
+### Added
+| Item | Why |
+|---|---|
+| `ride_requests` added to the `supabase_realtime` publication; `REPLICA IDENTITY FULL` | Enables `postgres_changes` subscriptions. Full replica identity lets Realtime evaluate row filters on UPDATE/DELETE. RLS still decides what each subscriber receives. |
+| `useRideRequestsRealtime(scope, onChange?)` hook | One channel per user+scope; passengers filter to `customer_id=eq.<uid>`, operators rely on RLS. Invalidates `ride_requests` + `passenger_queue` queries, coalesced to one refetch per 250 ms burst (a "Confirm all" of 10 rows = 1 refetch). Cleans up on unmount; safe under StrictMode's double mount. |
+| **My rides**: live refetch + a toast when an operator confirms / starts / completes / cancels the passenger's ride | The passenger learns without refreshing. |
+| **Queue tab**: live refetch on any change | New requests and other operators' actions appear as they happen. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 12/12 · `vite build` OK. Migration runs on the Supabase preview branch for the PR. Realtime itself can only be exercised against the live project: open My rides as a passenger and the Queue as an operator in two browsers and confirm a request.
+
+### Not changed (deliberately)
+- Bookings are not on Realtime yet; the issue scoped ride requests. Same hook pattern applies if wanted.
+- Status timeline and assigned-vehicle display in My rides remain #23.
+
+---
+
 ## 2026-09-17 — #19 Supabase advisor findings
 branch `fix/advisor-findings` → `Dev` · closes #19 · migration `20260917120000_advisor_fixes_rls_consolidation.sql`
 
