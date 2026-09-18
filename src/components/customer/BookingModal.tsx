@@ -4,6 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAppContext } from '@/context/AppContext';
 import { useCreateBooking, useCalculatePrice } from '@/hooks/useBookings';
+import { useMyProfile } from '@/hooks/useProfile';
 import { formatMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,7 +17,7 @@ import { toast } from 'sonner';
 
 const bookingSchema = z.object({
   customerName: z.string().trim().min(2, 'Name must be at least 2 characters').max(100),
-  customerEmail: z.string().trim().email('Invalid email address').max(255),
+  customerEmail: z.string().trim().email('Invalid email address').max(255).or(z.literal('')),
   customerPhone: z.string().trim().min(7, 'Enter a valid phone number').max(30),
   passengers: z.coerce.number().int().min(1, 'At least 1 passenger').max(100),
   startDate: z.string().min(1, 'Date is required'),
@@ -37,6 +38,7 @@ export const BookingModal: React.FC = () => {
   ]);
   const [stopErrors, setStopErrors] = useState<Record<string, string>>({});
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const { data: profile } = useMyProfile();
 
   const form = useForm<BookingFormValues>({
     resolver: zodResolver(bookingSchema),
@@ -53,6 +55,15 @@ export const BookingModal: React.FC = () => {
   });
 
   const duration = form.watch('duration');
+
+  // Prefill contact details from the profile so a passenger only types what's missing.
+  useEffect(() => {
+    if (!profile) return;
+    const v = form.getValues();
+    if (!v.customerName && profile.displayName) form.setValue('customerName', profile.displayName);
+    if (!v.customerPhone && profile.phone) form.setValue('customerPhone', profile.phone);
+    if (!v.customerEmail && profile.email) form.setValue('customerEmail', profile.email);
+  }, [profile, form]);
 
   // Recompute price server-side whenever duration / stops change
   useEffect(() => {
@@ -166,15 +177,15 @@ export const BookingModal: React.FC = () => {
                 )}
               </div>
               <div>
-                <Label htmlFor="email">Email</Label>
+                <Label htmlFor="email">Email <span className="text-secondary-400 font-normal">(optional)</span></Label>
                 <Input id="email" type="email" {...form.register('customerEmail')} />
                 {form.formState.errors.customerEmail && (
                   <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerEmail.message}</p>
                 )}
               </div>
               <div>
-                <Label htmlFor="phone">Phone Number</Label>
-                <Input id="phone" type="tel" {...form.register('customerPhone')} />
+                <Label htmlFor="phone">Mobile number</Label>
+                <Input id="phone" type="tel" inputMode="tel" autoComplete="tel" {...form.register('customerPhone')} />
                 {form.formState.errors.customerPhone && (
                   <p className="text-sm text-red-600 mt-1">{form.formState.errors.customerPhone.message}</p>
                 )}

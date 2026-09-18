@@ -5,6 +5,28 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-18 — Fixes: map floating over the ride sheet on mobile; passengers need only name + mobile
+branch `fix/mobile-map-and-passenger-signup` → `Dev` · migration `20260918150000_booking_email_optional.sql`
+
+**Why:** owner testing on a phone found the map painting *over* the "Request a ride" sheet. Separately, the target passenger (minibus-taxi commuter) should be able to use the app with a name and a mobile number; email should not be a gate.
+
+### Changed
+| Item | Why |
+|---|---|
+| `RouteMap` wrapper: `relative isolate z-0` | Root cause: the wrapper set `z-0` without a stacking context, so Leaflet's internal layers (z-index 400 for tiles/markers, 1000 for controls) escaped and painted over every `z-50` overlay — ride-request sheet, booking modal, header menu, dropdowns. `isolate` contains them. Applies to the loading placeholder too. |
+| **Sign-up** asks for a mobile number (required, validated) | Stored via the existing `handle_new_user` trigger into `profiles.phone`. Drivers reach passengers by phone; the number was never collected before. |
+| **Fleet booking**: email optional; name / mobile / email prefilled from the profile | Passenger only types what's missing. `create_booking()` no longer rejects a blank email (stored as `''`). |
+| **Request a ride**: if the profile has no mobile number, the sheet asks for one and saves it to the profile on submit | Covers accounts created before this change and OAuth sign-ins. |
+| New `useMyProfile` / `useUpdateMyProfile` hooks | Shared by the two forms; the Profile page (#33) can build on them. |
+
+### Not changed (deliberately)
+- **Email + password are still the login.** Signing in with *only* a mobile number (SMS one-time code) needs an SMS provider configured in Supabase Auth — owner decision and account (see follow-up issue). Until then the number is the contact, not the identity.
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 22/22 · `vite build` OK. The map fix is CSS-only — please re-test on the phone after deploy.
+
+---
+
 ## 2026-09-18 — #24 Ride request: "Now" or "Later" (scheduled_at)
 branch `feat/schedule-for-later` → `Dev` · closes #24 · no migration (`scheduled_at` already existed)
 
