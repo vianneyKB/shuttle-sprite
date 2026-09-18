@@ -138,6 +138,18 @@ export interface RideRequest {
   updatedAt: Date;
 }
 
+/**
+ * The vehicle carrying one of your ride requests, as returned by
+ * get_my_ride_vehicles(): identifying details only, no pricing.
+ */
+export interface AssignedVehicle {
+  id: string;
+  make: string;
+  model: string;
+  year: number;
+  capacity: number;
+}
+
 export interface PassengerQueueGroup {
   originName: string;
   destinationName: string;
