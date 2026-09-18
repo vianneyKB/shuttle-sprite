@@ -4,9 +4,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { X, Loader2 } from "lucide-react";
+import { X, Loader2, Zap, CalendarClock } from "lucide-react";
 import type { PaymentMethod, RouteStop, ShuttleRoute } from "@/types";
 import { useCreateRideRequest } from "@/hooks/useRideRequests";
+import { earliestScheduleTime, fromLocalInputValue, toLocalInputValue } from "@/lib/schedule";
 import { toast } from "sonner";
 
 type RideRequestModalProps = {
@@ -25,6 +26,8 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
   const [passengers, setPassengers] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
   const [notes, setNotes] = useState("");
+  const [when, setWhen] = useState<"now" | "later">("now");
+  const [scheduledLocal, setScheduledLocal] = useState(() => toLocalInputValue(earliestScheduleTime()));
 
   const destStops = route.stops.filter((s) => s.id !== originStop.id);
 
@@ -33,6 +36,19 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
     if (!dest) {
       toast.error("Select a destination stop");
       return;
+    }
+    let scheduledAt: string | undefined;
+    if (when === "later") {
+      const d = fromLocalInputValue(scheduledLocal);
+      if (!d) {
+        toast.error("Pick a date and time for the ride");
+        return;
+      }
+      if (d.getTime() < earliestScheduleTime().getTime()) {
+        toast.error("Scheduled rides need at least 15 minutes' notice");
+        return;
+      }
+      scheduledAt = d.toISOString();
     }
     try {
       await create.mutateAsync({
@@ -46,8 +62,9 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
         passengers,
         paymentMethod,
         notes: notes || undefined,
+        scheduledAt,
       });
-      toast.success("Ride request submitted — awaiting pickup");
+      toast.success(scheduledAt ? "Ride scheduled — we'll confirm closer to the time" : "Ride request submitted — awaiting pickup");
       onClose();
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : "Failed to submit request");
@@ -83,6 +100,44 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
               ))}
             </SelectContent>
           </Select>
+        </fieldset>
+
+        <fieldset className="space-y-2 border-0 p-0">
+          <Label>When</Label>
+          <p className="grid grid-cols-2 gap-2">
+            <Button
+              type="button"
+              variant={when === "now" ? "default" : "outline"}
+              onClick={() => setWhen("now")}
+              aria-pressed={when === "now"}
+            >
+              <Zap className="w-4 h-4 mr-1" /> Now
+            </Button>
+            <Button
+              type="button"
+              variant={when === "later" ? "default" : "outline"}
+              onClick={() => setWhen("later")}
+              aria-pressed={when === "later"}
+            >
+              <CalendarClock className="w-4 h-4 mr-1" /> Later
+            </Button>
+          </p>
+          {when === "later" && (
+            <>
+              <Input
+                id="scheduledAt"
+                aria-label="Pickup date and time"
+                type="datetime-local"
+                min={toLocalInputValue(earliestScheduleTime())}
+                value={scheduledLocal}
+                onChange={(e) => setScheduledLocal(e.target.value)}
+              />
+              <p className="text-xs text-secondary-500">
+                Pickup time at {originStop.name}
+                {route.operatingHours ? ` · route runs ${route.operatingHours}` : ""}
+              </p>
+            </>
+          )}
         </fieldset>
 
         <fieldset className="space-y-2 border-0 p-0">

@@ -64,6 +64,8 @@ export type RideRequestInput = {
   passengers: number;
   paymentMethod: PaymentMethod;
   notes?: string;
+  /** ISO instant for a ride booked for later; omit for "as soon as possible". */
+  scheduledAt?: string;
 };
 
 export const useMyRideRequests = () => {
@@ -177,6 +179,7 @@ export const useCreateRideRequest = () => {
         payment_status: paymentStatus,
         status: "awaiting",
         notes: input.notes ?? null,
+        scheduled_at: input.scheduledAt ?? null,
       });
       if (error) throw error;
     },

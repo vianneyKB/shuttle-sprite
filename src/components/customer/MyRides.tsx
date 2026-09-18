@@ -2,6 +2,7 @@ import React from "react";
 import { useMyBookings, useCancelBooking } from "@/hooks/useBookings";
 import { useMyRideRequests, useMyRideVehicles, useCancelRideRequest } from "@/hooks/useRideRequests";
 import { useRideRequestsRealtime } from "@/hooks/useRideRequestsRealtime";
+import { formatScheduled } from "@/lib/schedule";
 import { RideTimeline } from "@/components/customer/RideTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -84,7 +85,10 @@ export const MyRides: React.FC = () => {
                     <MapPin className="w-4 h-4 text-primary-600 shrink-0" />
                     {r.originName} → {r.destinationName}
                   </p>
-                  <p className="text-sm text-secondary-600">{r.passengers} passenger(s)</p>
+                  <p className="text-sm text-secondary-600">
+                  {r.passengers} passenger(s)
+                  {r.scheduledAt ? ` · scheduled for ${formatScheduled(r.scheduledAt)}` : ""}
+                </p>
 
                   <RideTimeline request={r} />
 
