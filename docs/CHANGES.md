@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-18 — #23 My rides: status timeline and assigned vehicle
+branch `routine/issue-23` → `Dev` · closes #23 · migration `20260918041011_my_ride_vehicles.sql`
+
+**Why:** a passenger's card showed a status word and nothing else. With dispatch (#20/#21) stamping `assigned_at` / `started_at` / `completed_at` and Realtime (#22) delivering the changes, the card can show where the ride actually is and which vehicle is coming — but the passenger cannot read `public.vehicles` for it, because `vehicles_select` only exposes rows with `available = true`, so a vehicle taken off the listing mid-trip would disappear from the card.
+
+### Added
+| Item | Why |
+|---|---|
+| `get_my_ride_vehicles()` RPC (`SECURITY DEFINER`, `authenticated` only) | The passenger's read path for the assigned vehicle. Returns make/model/year/seats for vehicles attached to the **caller's own** ride requests only — no pricing, location or operator id — and does not depend on the `available` flag. |
+| `useMyRideVehicles()` → `Map<vehicleId, AssignedVehicle>` | One call per passenger, looked up by `vehicleId` on each card. Query key is `["ride_requests","vehicles",uid]`, so the existing Realtime and dispatch invalidations of `["ride_requests"]` refresh it with no change to `useRideRequestsRealtime`. |
+| `rideTimeline()` + `formatStepTime()` in `src/lib/rideTimeline.ts` | Pure mapping from a request to the four steps (Requested → Confirmed → On the way → Completed) with each step's timestamp and `done`/`current`/`upcoming` state. A cancelled ride has no place on the ladder, so how far it got is read back from the timestamps and no step is `current`. 6 new tests (suite 12 → 18). |
+| `RideTimeline` component, rendered on every shuttle-request card | The timeline the issue asks for; muted for a cancelled ride, with a "This request was cancelled." line. |
+| Assigned-vehicle line on the card: `Toyota Quantum (2022) · 14 seats` | Shown as soon as an operator assigns, live via Realtime. |
+| `AssignedVehicle` type; `mapAssignedVehicle` mapper + 1 test | |
+
+### Changed
+| Item | Why |
+|---|---|
+| `src/integrations/supabase/types.ts`: `get_my_ride_vehicles` added to `Functions` | Hand-updated, as there is no CLI access to regenerate it. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 18/18 · `npm run build` OK. The migration runs on the Supabase preview branch for the PR; the live timeline needs two browsers against the real project (dispatch as operator, watch My rides as passenger).
+
+### Not changed (deliberately)
+- The toast on status change already shipped with #22 and covers what this issue asks for; left as is.
+- Fleet bookings keep their existing card — the issue is about shuttle ride requests.
+- No driver/operator name or contact on the card; that is passenger↔operator contact, a separate decision.
+
+---
+
 ## 2026-09-17 — #22 Realtime for ride requests
 branch `feat/realtime-ride-requests` → `Dev` · closes #22 · migration `20260917140000_realtime_ride_requests.sql`
 
