@@ -5,6 +5,37 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-18 — #56 Route fares: per-route / per-segment, per-seat, effective-dated
+branch `feat/route-fares` → `Dev` · closes #56 · migration `20260918170000_route_fares.sql`
+
+**Why:** minibus-taxi fares are fixed per route and per seat (see the taxi-bus research), changed a few times a year by operators/associations. The shuttle line had no price at all — passengers couldn't see what a ride costs, operators had nowhere to set it.
+
+### Added
+| Item | Why |
+|---|---|
+| `route_fares` table: whole-route rows (stops null) or one origin → destination override; `fare_per_seat`; `effective_from` / `effective_to` | Fares are **history**: an increase is a new row with a start date; amounts can't be edited (trigger), only ended early or removed before they start. Passengers already quoted keep their price. |
+| `quote_ride_fare(route, from, to, passengers, at)` RPC | Segment fare in force at `at` → else whole-route fare → else "no fare" (ride still allowed, pay on board). Applies the operator's currency and VAT exactly like fleet bookings. |
+| `create_ride_request(...)` RPC (`SECURITY DEFINER`) — now the **only** way to create a request | Validates the stops belong to the route, passengers 1–50, and `scheduled_at` ≥ now + 15 min (the server check deferred in #24); quotes; **snapshots** `fare_per_seat`, `currency`, `subtotal`, `tax_rate`, `tax_amount`, `total_price`, plus `origin/destination_stop_id`. |
+| **Operator → Routes → Fares** dialog | Current fare, scheduled increases, past fares; add a whole-route or segment fare with a start date; end a fare. |
+| **Request a ride**: live fare quote (seats × per-seat, tax line, total) before Submit; "pay on board" when no fare is set | Passengers see the price first. Re-quotes when destination, passengers or pickup time change. |
+| **My rides** and **Queue** rows show the quoted total | Both sides see the same number. |
+| `useRouteFares`, `useAddRouteFare`, `useEndRouteFare`, `useRideFareQuote`; `resolveFare()` mirrors the SQL precedence; 7 tests (suite now 29) | |
+
+### Removed
+| Item | Why |
+|---|---|
+| RLS policy `ride_requests_insert` and the client-side insert in `useCreateRideRequest` | Direct inserts bypassed the quote. |
+| `originName/Lat/Lng`, `destinationName/Lat/Lng` from `RideRequestInput` | The RPC derives them from the stop ids; the columns stay on the table for display. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 29/29 · `vite build` OK. Migration runs on the Supabase preview branch for the PR.
+
+### Not changed (deliberately)
+- Correcting the fare on an existing request (audited) is #57.
+- No "departs when full" seat counter yet; needs vehicle capacity per group (small follow-up once fares are in).
+
+---
+
 ## 2026-09-18 — Fixes: map floating over the ride sheet on mobile; passengers need only name + mobile
 branch `fix/mobile-map-and-passenger-signup` → `Dev` · migration `20260918150000_booking_email_optional.sql`
 

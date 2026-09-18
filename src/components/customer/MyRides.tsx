@@ -88,6 +88,9 @@ export const MyRides: React.FC = () => {
                   <p className="text-sm text-secondary-600">
                   {r.passengers} passenger(s)
                   {r.scheduledAt ? ` · scheduled for ${formatScheduled(r.scheduledAt)}` : ""}
+                  {r.totalPrice != null
+                    ? ` · ${formatMoney(r.totalPrice, r.currency)}`
+                    : " · fare payable on board"}
                 </p>
 
                   <RideTimeline request={r} />
