@@ -50,7 +50,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
 
   if (isLoading) {
     return (
-      <Wrapper className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 bg-secondary-50 flex items-center justify-center">
+      <Wrapper className="relative isolate z-0 h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 bg-secondary-50 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-primary-600" />
       </Wrapper>
     );
@@ -64,7 +64,7 @@ export const RouteMap: React.FC<RouteMapProps> = ({
         onChange={(e) => setFilter(e.target.value)}
         className="max-w-md"
       />
-      <Wrapper className="h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 overflow-hidden z-0">
+      <Wrapper className="relative isolate z-0 h-[min(420px,55dvh)] sm:h-[480px] rounded-xl border border-secondary-200 overflow-hidden">
         <MapContainer
           center={DEFAULT_MAP_CENTER}
           zoom={DEFAULT_MAP_ZOOM}
