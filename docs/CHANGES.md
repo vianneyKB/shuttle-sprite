@@ -5,6 +5,29 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-18 — #24 Ride request: "Now" or "Later" (scheduled_at)
+branch `feat/schedule-for-later` → `Dev` · closes #24 · no migration (`scheduled_at` already existed)
+
+**Why:** the column was there but nothing ever set it — every request was implicitly "right now". Commuters plan trips (early airport runs, end of shift), and operators need to see demand that is coming, not just demand that is waiting.
+
+### Added
+| Item | Why |
+|---|---|
+| **Now / Later** toggle in the ride request form; Later reveals a date-time picker (min = 15 min from now, rounded to 5 min) | Passengers book ahead. 15 minutes' notice is enforced client-side; the route's operating hours are shown as a hint. |
+| `RideRequestInput.scheduledAt` → `ride_requests.scheduled_at` | Stored as an absolute instant (ISO/UTC); the browser handles the local-zone conversion. |
+| `src/lib/schedule.ts` (+4 tests): local ⇄ input conversion, earliest-time rounding, display format | Pure helpers so the zone logic is testable. |
+| **My rides** shows "scheduled for Fri 18 Sep, 15:30" on the card | Passenger sees what they booked. |
+| **Queue** group cards show "3 now · next scheduled Fri 18 Sep, 15:30 (+2 more)"; rows within a group are ordered: now-requests first, then by pickup time | Operators see immediate vs upcoming demand per direction. Individual rows already showed "for <time>". |
+
+### Not changed (deliberately)
+- No server-side rejection of past `scheduled_at` values yet — the column is set via the plain INSERT policy. Worth a CHECK/trigger when a `create_ride_request` RPC lands (route fares will need one anyway).
+- No reminder/notification before a scheduled pickup — that's the notifications issue (#37).
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 22/22 · `vite build` OK.
+
+---
+
 ## 2026-09-18 — #23 My rides: status timeline and assigned vehicle
 branch `routine/issue-23` → `Dev` · closes #23 · migration `20260918041011_my_ride_vehicles.sql`
 
