@@ -9,6 +9,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, MapPin, ArrowRight, Loader2, ChevronDown, ChevronUp, Bus, Play, Check, X, Clock } from "lucide-react";
 import { toast } from "sonner";
+import { formatScheduled } from "@/lib/schedule";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -154,6 +155,8 @@ const WaitingGroup: React.FC<{
   const [bulkVehicle, setBulkVehicle] = useState<string | undefined>();
   const first = requests[0];
   const totalPassengers = requests.reduce((s, r) => s + r.passengers, 0);
+  const scheduled = requests.map((r) => r.scheduledAt).filter((s): s is string => !!s).sort();
+  const nowCount = requests.length - scheduled.length;
   const bulkCapacity = vehicles.find((v) => v.id === bulkVehicle)?.capacity;
 
   return (
@@ -184,6 +187,14 @@ const WaitingGroup: React.FC<{
               {requests.length} request{requests.length !== 1 ? "s" : ""}
             </span>
           </p>
+          {scheduled.length > 0 && (
+            <p className="flex items-center gap-1 text-xs text-secondary-600">
+              <Clock className="w-3.5 h-3.5" />
+              {nowCount > 0 ? `${nowCount} now · ` : ""}
+              next scheduled {formatScheduled(scheduled[0])}
+              {scheduled.length > 1 ? ` (+${scheduled.length - 1} more)` : ""}
+            </p>
+          )}
 
           <p className="flex flex-wrap items-center gap-2">
             <VehicleSelect vehicles={vehicles} value={bulkVehicle} onChange={setBulkVehicle} disabled={busy} placeholder="Vehicle for all" />
@@ -233,6 +244,8 @@ export const PassengerQueue: React.FC = () => {
       if (r.status === "awaiting") {
         const k = groupKey(r);
         groups.set(k, [...(groups.get(k) ?? []), r]);
+        // "Now" requests first, then scheduled ones by pickup time.
+        groups.get(k)!.sort((a, b) => (a.scheduledAt ?? "").localeCompare(b.scheduledAt ?? ""));
       } else if (r.status === "confirmed" || r.status === "in_progress") {
         active.push(r);
       }
