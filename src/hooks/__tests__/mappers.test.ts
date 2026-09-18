@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { mapBooking, type DbBooking, type DbStop } from "../useBookings";
 import { mapRoute, type DbRoute, type DbRouteStop } from "../useRoutes";
-import { mapRideRequest, type DbRideRequest } from "../useRideRequests";
+import { mapAssignedVehicle, mapRideRequest, type DbAssignedVehicle, type DbRideRequest } from "../useRideRequests";
 import { mapVehicle, type DbVehicle } from "../useVehicles";
 
 // Postgres numeric columns arrive from PostgREST as strings; the mappers must coerce them.
@@ -188,6 +188,25 @@ describe("mapRideRequest", () => {
     expect(r.assignedAt).toBeInstanceOf(Date);
     expect(r.startedAt?.toISOString()).toBe("2026-09-17T08:10:00.000Z");
     expect(r.completedAt).toBeUndefined();
+  });
+});
+
+describe("mapAssignedVehicle", () => {
+  it("renames vehicle_id to id and coerces the numerics", () => {
+    const row: DbAssignedVehicle = {
+      vehicle_id: "v9",
+      make: "Toyota",
+      model: "Quantum",
+      year: num("2022"),
+      capacity: num("14"),
+    };
+    expect(mapAssignedVehicle(row)).toEqual({
+      id: "v9",
+      make: "Toyota",
+      model: "Quantum",
+      year: 2022,
+      capacity: 14,
+    });
   });
 });
 

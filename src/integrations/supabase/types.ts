@@ -476,6 +476,16 @@ export type Database = {
         }
         Returns: string
       }
+      get_my_ride_vehicles: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          capacity: number
+          make: string
+          model: string
+          vehicle_id: string
+          year: number
+        }[]
+      }
       get_passenger_queue: {
         Args: never
         Returns: {

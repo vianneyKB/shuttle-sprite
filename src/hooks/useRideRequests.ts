@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { PassengerQueueGroup, PaymentMethod, RideRequest, RideRequestStatus } from "@/types";
+import type { AssignedVehicle, PassengerQueueGroup, PaymentMethod, RideRequest, RideRequestStatus } from "@/types";
 
 export type DbRideRequest = {
   id: string;
@@ -79,6 +79,42 @@ export const useMyRideRequests = () => {
         .order("created_at", { ascending: false });
       if (error) throw error;
       return ((data ?? []) as unknown as DbRideRequest[]).map(mapRideRequest);
+    },
+  });
+};
+
+export type DbAssignedVehicle = {
+  vehicle_id: string;
+  make: string;
+  model: string;
+  year: number;
+  capacity: number;
+};
+
+export const mapAssignedVehicle = (v: DbAssignedVehicle): AssignedVehicle => ({
+  id: v.vehicle_id,
+  make: v.make,
+  model: v.model,
+  year: Number(v.year),
+  capacity: Number(v.capacity),
+});
+
+/**
+ * The vehicles assigned to the passenger's own ride requests, keyed by id.
+ * RLS on `vehicles` hides any vehicle the operator has marked unavailable,
+ * so this goes through get_my_ride_vehicles() instead. The key sits under
+ * ["ride_requests", ...] so the Realtime invalidation refreshes it too.
+ */
+export const useMyRideVehicles = () => {
+  const { user } = useAuth();
+  return useQuery({
+    queryKey: ["ride_requests", "vehicles", user?.id],
+    enabled: !!user,
+    queryFn: async (): Promise<Map<string, AssignedVehicle>> => {
+      const { data, error } = await supabase.rpc("get_my_ride_vehicles");
+      if (error) throw error;
+      const rows = (data ?? []) as unknown as DbAssignedVehicle[];
+      return new Map(rows.map((row) => [row.vehicle_id, mapAssignedVehicle(row)]));
     },
   });
 };

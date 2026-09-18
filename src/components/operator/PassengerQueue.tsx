@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { useOperatorRideRequests, useDispatchRideRequest, type DispatchInput } from "@/hooks/useRideRequests";
 import { useMyVehicles } from "@/hooks/useVehicles";
+import { useRideRequestsRealtime } from "@/hooks/useRideRequestsRealtime";
 import type { RideRequest, RideRequestStatus, Vehicle } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -221,6 +222,9 @@ export const PassengerQueue: React.FC = () => {
   const { data: requests = [], isLoading } = useOperatorRideRequests();
   const { data: vehicles = [] } = useMyVehicles();
   const dispatch = useDispatchRideRequest();
+
+  // New requests and other operators' actions appear without a refresh.
+  useRideRequestsRealtime("operator");
 
   const { waitingGroups, active } = useMemo(() => {
     const groups = new Map<string, RideRequest[]>();

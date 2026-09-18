@@ -1,6 +1,8 @@
 import React from "react";
 import { useMyBookings, useCancelBooking } from "@/hooks/useBookings";
-import { useMyRideRequests, useCancelRideRequest } from "@/hooks/useRideRequests";
+import { useMyRideRequests, useMyRideVehicles, useCancelRideRequest } from "@/hooks/useRideRequests";
+import { useRideRequestsRealtime } from "@/hooks/useRideRequestsRealtime";
+import { RideTimeline } from "@/components/customer/RideTimeline";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -16,8 +18,25 @@ const Row = ({ children, className }: { children: React.ReactNode; className?: s
 export const MyRides: React.FC = () => {
   const { data: bookings = [], isLoading: bLoad } = useMyBookings();
   const { data: requests = [], isLoading: rLoad } = useMyRideRequests();
+  const { data: rideVehicles } = useMyRideVehicles();
   const cancelBooking = useCancelBooking();
   const cancelRequest = useCancelRideRequest();
+
+  // Live updates: refetch on any change to this passenger's requests and
+  // tell them when an operator moves a ride along.
+  useRideRequestsRealtime("customer", (payload) => {
+    if (payload.eventType !== "UPDATE") return;
+    const before = (payload.old as { status?: string }).status;
+    const after = (payload.new as { status?: string }).status;
+    if (!after || before === after) return;
+    const label: Record<string, string> = {
+      confirmed: "Your ride has been confirmed",
+      in_progress: "Your ride is on its way",
+      completed: "Ride completed — thanks for travelling with us",
+      cancelled: "Your ride request was cancelled",
+    };
+    if (label[after]) toast.info(label[after]);
+  });
 
   const statusColor = (s: string) =>
     ({
@@ -50,39 +69,56 @@ export const MyRides: React.FC = () => {
             No shuttle ride requests yet. Pick a stop on the map to request a ride.
           </p>
         ) : (
-          requests.map((r) => (
-            <Card key={r.id}>
-              <CardContent className="p-4 sm:p-6 space-y-3">
-                <Row className="flex flex-wrap items-center gap-2 justify-between not-only:p-0">
-                  <Badge className={statusColor(r.status)}>{r.status.replace("_", " ")}</Badge>
-                  <span className="text-sm text-secondary-600 capitalize">
-                    {r.paymentMethod} · {r.paymentStatus.replace("_", " ")}
-                  </span>
-                </Row>
-                <p className="flex items-center gap-2 text-sm">
-                  <MapPin className="w-4 h-4 text-primary-600 shrink-0" />
-                  {r.originName} → {r.destinationName}
-                </p>
-                <p className="text-sm text-secondary-600">{r.passengers} passenger(s)</p>
-                {r.status === "awaiting" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await cancelRequest.mutateAsync(r.id);
-                        toast.success("Request cancelled");
-                      } catch (e: unknown) {
-                        toast.error(e instanceof Error ? e.message : "Cancel failed");
-                      }
-                    }}
-                  >
-                    Cancel request
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ))
+          requests.map((r) => {
+            const vehicle = r.vehicleId ? rideVehicles?.get(r.vehicleId) : undefined;
+            return (
+              <Card key={r.id}>
+                <CardContent className="p-4 sm:p-6 space-y-3">
+                  <Row className="flex flex-wrap items-center gap-2 justify-between not-only:p-0">
+                    <Badge className={statusColor(r.status)}>{r.status.replace("_", " ")}</Badge>
+                    <span className="text-sm text-secondary-600 capitalize">
+                      {r.paymentMethod} · {r.paymentStatus.replace("_", " ")}
+                    </span>
+                  </Row>
+                  <p className="flex items-center gap-2 text-sm">
+                    <MapPin className="w-4 h-4 text-primary-600 shrink-0" />
+                    {r.originName} → {r.destinationName}
+                  </p>
+                  <p className="text-sm text-secondary-600">{r.passengers} passenger(s)</p>
+
+                  <RideTimeline request={r} />
+
+                  {vehicle && (
+                    <p className="flex items-center gap-2 text-sm text-secondary-700">
+                      <Bus className="w-4 h-4 text-primary-600 shrink-0" />
+                      {vehicle.make} {vehicle.model} ({vehicle.year}) · {vehicle.capacity} seats
+                    </p>
+                  )}
+
+                  {r.status === "cancelled" && (
+                    <p className="text-sm text-red-700">This request was cancelled.</p>
+                  )}
+
+                  {r.status === "awaiting" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={async () => {
+                        try {
+                          await cancelRequest.mutateAsync(r.id);
+                          toast.success("Request cancelled");
+                        } catch (e: unknown) {
+                          toast.error(e instanceof Error ? e.message : "Cancel failed");
+                        }
+                      }}
+                    >
+                      Cancel request
+                    </Button>
+                  )}
+                </CardContent>
+              </Card>
+            );
+          })
         )}
       </TabsContent>
 
