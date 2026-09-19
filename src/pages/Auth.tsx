@@ -23,6 +23,10 @@ const signInSchema = z.object({
 
 const signUpSchema = z.object({
   displayName: z.string().min(2, "Enter your name").max(80),
+  phone: z
+    .string()
+    .trim()
+    .regex(/^\+?[0-9 ()-]{7,20}$/, "Enter a valid mobile number"),
   email: z.string().email("Enter a valid email"),
   password: z.string().min(8, "At least 8 characters"),
   role: z.enum(["customer", "operator"]),
@@ -45,7 +49,7 @@ const Auth: React.FC = () => {
 
   const signUpForm = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
-    defaultValues: { displayName: "", email: "", password: "", role: "customer" },
+    defaultValues: { displayName: "", phone: "", email: "", password: "", role: "customer" },
   });
 
   const onSignIn = async (values: z.infer<typeof signInSchema>) => {
@@ -70,7 +74,7 @@ const Auth: React.FC = () => {
       password: values.password,
       options: {
         emailRedirectTo: `${window.location.origin}/`,
-        data: { display_name: values.displayName, role: values.role },
+        data: { display_name: values.displayName, phone: values.phone, role: values.role },
       },
     });
     setSubmitting(false);
@@ -149,6 +153,13 @@ const Auth: React.FC = () => {
                 <Input id="su-name" {...signUpForm.register("displayName")} />
                 {signUpForm.formState.errors.displayName && (
                   <p className="text-xs text-destructive mt-1">{signUpForm.formState.errors.displayName.message}</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="su-phone">Mobile number</Label>
+                <Input id="su-phone" type="tel" inputMode="tel" autoComplete="tel" placeholder="e.g. 082 123 4567" {...signUpForm.register("phone")} />
+                {signUpForm.formState.errors.phone && (
+                  <p className="text-xs text-destructive mt-1">{signUpForm.formState.errors.phone.message}</p>
                 )}
               </div>
               <div>

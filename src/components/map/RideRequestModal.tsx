@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { X, Loader2, Zap, CalendarClock } from "lucide-react";
 import type { PaymentMethod, RouteStop, ShuttleRoute } from "@/types";
 import { useCreateRideRequest } from "@/hooks/useRideRequests";
+import { useMyProfile, useUpdateMyProfile } from "@/hooks/useProfile";
 import { earliestScheduleTime, fromLocalInputValue, toLocalInputValue } from "@/lib/schedule";
 import { toast } from "sonner";
 
@@ -22,6 +23,10 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
   onClose,
 }) => {
   const create = useCreateRideRequest();
+  const { data: profile } = useMyProfile();
+  const updateProfile = useUpdateMyProfile();
+  const needsPhone = !!profile && !profile.phone;
+  const [phone, setPhone] = useState("");
   const [destinationStopId, setDestinationStopId] = useState("");
   const [passengers, setPassengers] = useState(1);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
@@ -35,6 +40,10 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
     const dest = destStops.find((s) => s.id === destinationStopId);
     if (!dest) {
       toast.error("Select a destination stop");
+      return;
+    }
+    if (needsPhone && !/^\+?[0-9 ()-]{7,20}$/.test(phone.trim())) {
+      toast.error("Add a mobile number so the driver can reach you");
       return;
     }
     let scheduledAt: string | undefined;
@@ -51,6 +60,7 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
       scheduledAt = d.toISOString();
     }
     try {
+      if (needsPhone) await updateProfile.mutateAsync({ phone });
       await create.mutateAsync({
         routeId: route.id,
         originName: originStop.name,
@@ -139,6 +149,21 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
             </>
           )}
         </fieldset>
+
+        {needsPhone && (
+          <fieldset className="space-y-2 border-0 p-0">
+            <Label htmlFor="rr-phone">Mobile number</Label>
+            <Input
+              id="rr-phone"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
+              placeholder="So the driver can reach you"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+          </fieldset>
+        )}
 
         <fieldset className="space-y-2 border-0 p-0">
           <Label htmlFor="passengers">Passengers</Label>
