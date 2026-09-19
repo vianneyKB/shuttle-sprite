@@ -229,6 +229,14 @@ export type Database = {
           assigned_at: string | null
           started_at: string | null
           completed_at: string | null
+          fare_per_seat: number | null
+          currency: string
+          subtotal: number | null
+          tax_rate: number
+          tax_amount: number | null
+          total_price: number | null
+          origin_stop_id: string | null
+          destination_stop_id: string | null
           status: Database["public"]["Enums"]["ride_request_status"]
           updated_at: string
         }
@@ -253,6 +261,14 @@ export type Database = {
           assigned_at?: string | null
           started_at?: string | null
           completed_at?: string | null
+          fare_per_seat?: number | null
+          currency?: string
+          subtotal?: number | null
+          tax_rate?: number
+          tax_amount?: number | null
+          total_price?: number | null
+          origin_stop_id?: string | null
+          destination_stop_id?: string | null
           status?: Database["public"]["Enums"]["ride_request_status"]
           updated_at?: string
         }
@@ -277,6 +293,14 @@ export type Database = {
           assigned_at?: string | null
           started_at?: string | null
           completed_at?: string | null
+          fare_per_seat?: number | null
+          currency?: string
+          subtotal?: number | null
+          tax_rate?: number
+          tax_amount?: number | null
+          total_price?: number | null
+          origin_stop_id?: string | null
+          destination_stop_id?: string | null
           status?: Database["public"]["Enums"]["ride_request_status"]
           updated_at?: string
         }
@@ -286,6 +310,50 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      route_fares: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          effective_from: string
+          effective_to: string | null
+          fare_per_seat: number
+          from_stop_id: string | null
+          id: string
+          route_id: string
+          to_stop_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          fare_per_seat: number
+          from_stop_id?: string | null
+          id?: string
+          route_id: string
+          to_stop_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          effective_from?: string
+          effective_to?: string | null
+          fare_per_seat?: number
+          from_stop_id?: string | null
+          id?: string
+          route_id?: string
+          to_stop_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "route_fares_route_id_fkey"
+            columns: ["route_id"]
+            isOneToOne: false
+            referencedRelation: "shuttle_routes"
             referencedColumns: ["id"]
           },
         ]
@@ -498,6 +566,28 @@ export type Database = {
           request_count: number
           total_passengers: number
         }[]
+      }
+      create_ride_request: {
+        Args: {
+          _route_id: string
+          _origin_stop_id: string
+          _destination_stop_id: string
+          _passengers?: number
+          _payment_method?: Database["public"]["Enums"]["payment_method"]
+          _scheduled_at?: string | null
+          _notes?: string | null
+        }
+        Returns: Database["public"]["Tables"]["ride_requests"]["Row"]
+      }
+      quote_ride_fare: {
+        Args: {
+          _route_id: string
+          _from_stop_id: string
+          _to_stop_id: string
+          _passengers?: number
+          _at?: string
+        }
+        Returns: Json
       }
       dispatch_ride_request: {
         Args: {

@@ -24,6 +24,14 @@ export type DbRideRequest = {
   assigned_at?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+  origin_stop_id?: string | null;
+  destination_stop_id?: string | null;
+  fare_per_seat?: number | null;
+  currency?: string;
+  subtotal?: number | null;
+  tax_rate?: number;
+  tax_amount?: number | null;
+  total_price?: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -44,6 +52,14 @@ export const mapRideRequest = (r: DbRideRequest): RideRequest => ({
   status: r.status,
   scheduledAt: r.scheduled_at ?? undefined,
   notes: r.notes ?? undefined,
+  originStopId: r.origin_stop_id ?? undefined,
+  destinationStopId: r.destination_stop_id ?? undefined,
+  farePerSeat: r.fare_per_seat == null ? undefined : Number(r.fare_per_seat),
+  currency: r.currency ?? "ZAR",
+  subtotal: r.subtotal == null ? undefined : Number(r.subtotal),
+  taxRate: Number(r.tax_rate ?? 0),
+  taxAmount: r.tax_amount == null ? undefined : Number(r.tax_amount),
+  totalPrice: r.total_price == null ? undefined : Number(r.total_price),
   operatorId: r.operator_id ?? undefined,
   vehicleId: r.vehicle_id ?? undefined,
   assignedAt: r.assigned_at ? new Date(r.assigned_at) : undefined,
@@ -54,13 +70,9 @@ export const mapRideRequest = (r: DbRideRequest): RideRequest => ({
 });
 
 export type RideRequestInput = {
-  routeId?: string;
-  originName: string;
-  originLat: number;
-  originLng: number;
-  destinationName: string;
-  destinationLat: number;
-  destinationLng: number;
+  routeId: string;
+  originStopId: string;
+  destinationStopId: string;
   passengers: number;
   paymentMethod: PaymentMethod;
   notes?: string;
@@ -162,26 +174,21 @@ export const useCreateRideRequest = () => {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
-    mutationFn: async (input: RideRequestInput) => {
+    mutationFn: async (input: RideRequestInput): Promise<RideRequest> => {
       if (!user) throw new Error("Not authenticated");
-      const paymentStatus = input.paymentMethod === "prepay" ? "pending" : "not_required";
-      const { error } = await supabase.from("ride_requests").insert({
-        customer_id: user.id,
-        route_id: input.routeId ?? null,
-        origin_name: input.originName,
-        origin_lat: input.originLat,
-        origin_lng: input.originLng,
-        destination_name: input.destinationName,
-        destination_lat: input.destinationLat,
-        destination_lng: input.destinationLng,
-        passengers: input.passengers,
-        payment_method: input.paymentMethod,
-        payment_status: paymentStatus,
-        status: "awaiting",
-        notes: input.notes ?? null,
-        scheduled_at: input.scheduledAt ?? null,
+      // create_ride_request validates the stops, quotes the fare from
+      // route_fares + operator_settings and snapshots it on the row.
+      const { data, error } = await supabase.rpc("create_ride_request", {
+        _route_id: input.routeId,
+        _origin_stop_id: input.originStopId,
+        _destination_stop_id: input.destinationStopId,
+        _passengers: input.passengers,
+        _payment_method: input.paymentMethod,
+        _scheduled_at: input.scheduledAt ?? null,
+        _notes: input.notes ?? null,
       });
       if (error) throw error;
+      return mapRideRequest(data as unknown as DbRideRequest);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ride_requests"] });

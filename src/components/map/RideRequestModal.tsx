@@ -8,6 +8,8 @@ import { X, Loader2, Zap, CalendarClock } from "lucide-react";
 import type { PaymentMethod, RouteStop, ShuttleRoute } from "@/types";
 import { useCreateRideRequest } from "@/hooks/useRideRequests";
 import { useMyProfile, useUpdateMyProfile } from "@/hooks/useProfile";
+import { useRideFareQuote } from "@/hooks/useRouteFares";
+import { formatMoney } from "@/lib/money";
 import { earliestScheduleTime, fromLocalInputValue, toLocalInputValue } from "@/lib/schedule";
 import { toast } from "sonner";
 
@@ -36,6 +38,15 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
 
   const destStops = route.stops.filter((s) => s.id !== originStop.id);
 
+  const scheduledIso = when === "later" ? fromLocalInputValue(scheduledLocal)?.toISOString() : undefined;
+  const quote = useRideFareQuote({
+    routeId: route.id,
+    fromStopId: originStop.id,
+    toStopId: destinationStopId || undefined,
+    passengers,
+    at: scheduledIso,
+  });
+
   const submit = async () => {
     const dest = destStops.find((s) => s.id === destinationStopId);
     if (!dest) {
@@ -63,12 +74,8 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
       if (needsPhone) await updateProfile.mutateAsync({ phone });
       await create.mutateAsync({
         routeId: route.id,
-        originName: originStop.name,
-        originLat: originStop.lat,
-        originLng: originStop.lng,
-        destinationName: dest.name,
-        destinationLat: dest.lat,
-        destinationLng: dest.lng,
+        originStopId: originStop.id,
+        destinationStopId: dest.id,
         passengers,
         paymentMethod,
         notes: notes || undefined,
@@ -194,6 +201,33 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
           <Label htmlFor="notes">Notes (optional)</Label>
           <Textarea id="notes" value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} />
         </fieldset>
+
+        <section className="rounded-xl bg-primary-50 p-3 text-sm" aria-live="polite">
+          {!destinationStopId ? (
+            <p className="text-secondary-600">Choose a destination to see the fare.</p>
+          ) : quote.isLoading ? (
+            <p className="flex items-center gap-2 text-secondary-600"><Loader2 className="w-4 h-4 animate-spin" /> Getting fare…</p>
+          ) : quote.data && quote.data.total != null ? (
+            <>
+              <p className="flex justify-between">
+                <span>{passengers} × {formatMoney(quote.data.farePerSeat ?? 0, quote.data.currency)} per seat</span>
+                <span>{formatMoney(quote.data.subtotal ?? 0, quote.data.currency)}</span>
+              </p>
+              {quote.data.taxAmount != null && quote.data.taxAmount > 0 && (
+                <p className="flex justify-between text-secondary-600">
+                  <span>{quote.data.taxLabel} ({quote.data.taxRate}%){quote.data.pricesIncludeTax ? " incl." : ""}</span>
+                  <span>{formatMoney(quote.data.taxAmount, quote.data.currency)}</span>
+                </p>
+              )}
+              <p className="flex justify-between font-semibold text-base pt-1 border-t border-primary-200 mt-1">
+                <span>Fare</span>
+                <span>{formatMoney(quote.data.total, quote.data.currency)}</span>
+              </p>
+            </>
+          ) : (
+            <p className="text-secondary-600">No fare set for this trip — pay the driver on board.</p>
+          )}
+        </section>
 
         <Button className="w-full" onClick={submit} disabled={create.isPending}>
           {create.isPending ? (
