@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Users, MapPin, ArrowRight, Loader2, ChevronDown, ChevronUp, Bus, Play, Check, X, Clock } from "lucide-react";
 import { toast } from "sonner";
 import { formatScheduled } from "@/lib/schedule";
+import { formatMoney } from "@/lib/money";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -81,6 +82,9 @@ const RequestRow: React.FC<{
         </span>
         <span className="capitalize text-secondary-600">
           {r.paymentMethod} · {r.paymentStatus.replace("_", " ")}
+        </span>
+        <span className="font-medium">
+          {r.totalPrice != null ? formatMoney(r.totalPrice, r.currency) : "no fare set"}
         </span>
         <span className="flex items-center gap-1 text-secondary-500">
           <Clock className="w-3.5 h-3.5" /> {formatWhen(r)}

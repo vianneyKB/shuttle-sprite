@@ -15,7 +15,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, Loader2, Route } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, Route, Coins } from "lucide-react";
+import { RouteFaresDialog } from "./RouteFaresDialog";
 import { toast } from "sonner";
 
 const routeSchema = z.object({
@@ -43,6 +44,7 @@ export const RouteManagement: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>();
   const [stops, setStops] = useState<StopDraft[]>([emptyStop(), emptyStop()]);
+  const [faresFor, setFaresFor] = useState<string | undefined>();
 
   const form = useForm<RouteFormValues>({
     resolver: zodResolver(routeSchema),
@@ -162,6 +164,9 @@ export const RouteManagement: React.FC = () => {
                     </p>
                   </>
                   <p className="flex gap-2">
+                    <Button variant="outline" size="sm" onClick={() => setFaresFor(route.id)}>
+                      <Coins className="w-4 h-4 mr-1" /> Fares
+                    </Button>
                     <Button variant="outline" size="sm" onClick={() => openEdit(route.id)}>
                       <Edit2 className="w-4 h-4 mr-1" /> Edit
                     </Button>
@@ -187,6 +192,14 @@ export const RouteManagement: React.FC = () => {
             </li>
           ))}
         </ul>
+      )}
+
+      {faresFor && routes.find((r) => r.id === faresFor) && (
+        <RouteFaresDialog
+          route={routes.find((r) => r.id === faresFor)!}
+          open
+          onOpenChange={(o) => { if (!o) setFaresFor(undefined); }}
+        />
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>

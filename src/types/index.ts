@@ -128,6 +128,15 @@ export interface RideRequest {
   status: RideRequestStatus;
   scheduledAt?: string;
   notes?: string;
+  /** Fare snapshot taken by create_ride_request; all undefined when the route had no fare. */
+  originStopId?: string;
+  destinationStopId?: string;
+  farePerSeat?: number;
+  currency: string;
+  subtotal?: number;
+  taxRate: number;
+  taxAmount?: number;
+  totalPrice?: number;
   /** Dispatch: set when an operator confirms / assigns a vehicle. */
   operatorId?: string;
   vehicleId?: string;
@@ -148,6 +157,32 @@ export interface AssignedVehicle {
   model: string;
   year: number;
   capacity: number;
+}
+
+export interface RouteFare {
+  id: string;
+  routeId: string;
+  /** Both undefined = whole-route fare; both set = one origin → destination. */
+  fromStopId?: string;
+  toStopId?: string;
+  farePerSeat: number;
+  effectiveFrom: string; // YYYY-MM-DD
+  effectiveTo?: string;
+  createdAt: Date;
+}
+
+/** Returned by quote_ride_fare(). `total` is undefined when the route has no fare. */
+export interface RideFareQuote {
+  source: "segment" | "route" | "none";
+  farePerSeat?: number;
+  passengers: number;
+  currency: string;
+  subtotal?: number;
+  taxRate: number;
+  taxLabel: string;
+  taxAmount?: number;
+  pricesIncludeTax?: boolean;
+  total?: number;
 }
 
 export interface PassengerQueueGroup {
