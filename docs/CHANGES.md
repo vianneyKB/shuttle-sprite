@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
+branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
+
+**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
+
+### Added
+| Item | Why |
+|---|---|
+| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
+| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
+| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
+| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
+
+### Changed
+| Item | Why |
+|---|---|
+| The lat/lng inputs moved into a collapsible **Precise coordinates** section per stop, with the current pair shown on the trigger | Still there for a surveyed or pasted coordinate, no longer the primary way in. |
+| A new route starts with **no** stops instead of two prefilled at the Johannesburg default | Two pins stacked on the same default point read as one stop in the wrong place. The dialog now says "click the map to place the first one"; the existing "at least 2 named stops" check still guards Save. |
+| The map fits the existing stops once when the dialog opens (after `invalidateSize`, since the dialog is still animating when Leaflet measures) | Editing a route opens on that route. Refitting on every drag would yank the map away mid-edit. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No polyline preview** between the stops in the editor — that is #27.
+- **No stop names from the map** — reverse geocoding is #26; a clicked stop still needs a name typed.
+- Drag-and-drop reordering of the list (the issue marks it optional).
+
+---
+
 ## 2026-09-18 — #56 Route fares: per-route / per-segment, per-seat, effective-dated
 branch `feat/route-fares` → `Dev` · closes #56 · migration `20260918170000_route_fares.sql`
 
