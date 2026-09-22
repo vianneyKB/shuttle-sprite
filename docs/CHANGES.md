@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-22 — #26 Reverse-geocode stop names (Nominatim)
+branch `routine/issue-26` → `Dev` · closes #26 · no migration
+
+**Why:** an operator building a route had to type every stop name by hand next to a pair of coordinates. Once a stop has a position, OpenStreetMap already knows what is there — prefill the name and let the operator correct it. Nominatim is free but rate-limited (1 req/s) and asks callers to identify themselves, so the cap belongs in one place in the app, not in each caller.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/lib/geocode.ts`: `buildReverseUrl`, `stopNameFromReverse`, `reverseGeocode`, `roundCoord`, `isValidLatLng` | One serial queue holds the **whole app** to 1 request/second, whatever the UI does. `stopNameFromReverse` picks a stop-sized name (`name`/amenity/building/road, qualified by suburb or town) and returns `""` when nothing is usable, so a blank answer never overwrites a real name. Coordinates round to ~1 m for a stable cache key. |
+| `useReverseGeocode(coords, enabled)` hook | 800 ms debounce (dragging or typing a coordinate makes one request), TanStack Query cache per rounded coordinate, `retry: false`. |
+| Route editor: name prefilled once a stop is positioned, plus a **Name from map** button and a "Finding a name…" hint | Auto-fill only when the operator hasn't typed a name; the button re-looks-up on demand and overwrites. Typing in the name field stops auto-fill for that stop. |
+| `VITE_NOMINATIM_EMAIL` / `VITE_NOMINATIM_URL` (both optional), typed in `vite-env.d.ts` and documented in `.env.example` + README | The policy wants a contact address; the URL lets a busier deployment point at its own instance. |
+| 14 tests in `src/lib/__tests__/geocode.test.ts` (suite now 43) | URL shape, name mapping and fallbacks, and that a second lookup cannot leave inside the 1 s window. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `RouteManagement`: stop rows extracted into a `StopFields` child; parent exposes stable `patchStop` / `removeStop` callbacks | A stop row now owns a hook, so it has to be a component. Stable callbacks keep the auto-fill effect from re-running on every keystroke. Lat/lng/name inputs gained `aria-label`s. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 43/43 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **Nothing blocks on geocoding.** A failed or empty lookup is silent; the name field is plain text and Save is unaffected.
+- `User-Agent` and `Referer` cannot be set from browser `fetch` (forbidden header names). The browser sends `Referer` itself, which identifies the deployment; `VITE_NOMINATIM_EMAIL` adds the contact address.
+- Forward search ("type a place, drop a pin") is not part of this issue.
+- Clicking the map to place a stop is #25 (open in PR #65); this works off whatever sets a stop's coordinates, so it applies there too once merged.
+
+---
+
 ## 2026-09-18 — #56 Route fares: per-route / per-segment, per-seat, effective-dated
 branch `feat/route-fares` → `Dev` · closes #56 · migration `20260918170000_route_fares.sql`
 

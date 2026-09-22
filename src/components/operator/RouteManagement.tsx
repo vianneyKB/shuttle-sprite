@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -15,8 +15,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, Loader2, Route, Coins } from "lucide-react";
+import { Plus, Trash2, Edit2, Loader2, Route, Coins, MapPin } from "lucide-react";
 import { RouteFaresDialog } from "./RouteFaresDialog";
+import { useReverseGeocode } from "@/hooks/useReverseGeocode";
 import { toast } from "sonner";
 
 const routeSchema = z.object({
@@ -36,6 +37,97 @@ const emptyStop = (): StopDraft => ({
   lng: 28.0473,
 });
 
+type StopFieldsProps = {
+  stop: StopDraft;
+  index: number;
+  canRemove: boolean;
+  onPatch: (key: string, patch: Partial<RouteStopInput>) => void;
+  onRemove: (key: string) => void;
+};
+
+/**
+ * One stop row. Once the stop has been placed somewhere — a coordinate typed
+ * here, or a marker dropped on the map — its name is prefilled from Nominatim
+ * if the operator hasn't written one. The name stays a plain text field: the
+ * suggestion is a starting point, never a lock, and a failed lookup is silent.
+ */
+const StopFields: React.FC<StopFieldsProps> = ({ stop, index, canRemove, onPatch, onRemove }) => {
+  const { key } = stop;
+  const placedAt = useRef({ lat: stop.lat, lng: stop.lng });
+  const [nameTouched, setNameTouched] = useState(stop.name.trim() !== "");
+  const [lookupRequested, setLookupRequested] = useState(false);
+
+  const moved = stop.lat !== placedAt.current.lat || stop.lng !== placedAt.current.lng;
+  const wantsName = lookupRequested || (moved && !nameTouched && stop.name.trim() === "");
+
+  const { name: suggestion, isFetching, isFetched, isDebouncing } = useReverseGeocode(
+    { lat: stop.lat, lng: stop.lng },
+    wantsName
+  );
+
+  useEffect(() => {
+    if (!wantsName || isDebouncing || isFetching || !isFetched) return;
+    if (suggestion) onPatch(key, { name: suggestion });
+    setLookupRequested(false);
+  }, [wantsName, isDebouncing, isFetching, isFetched, suggestion, onPatch, key]);
+
+  const looking = wantsName && (isDebouncing || isFetching);
+
+  return (
+    <Card className="p-3 space-y-2">
+      <Input
+        placeholder={`Stop ${index + 1} name`}
+        aria-label={`Stop ${index + 1} name`}
+        value={stop.name}
+        onChange={(e) => {
+          setNameTouched(true);
+          setLookupRequested(false);
+          onPatch(key, { name: e.target.value });
+        }}
+      />
+      <p className="grid grid-cols-2 gap-2">
+        <Input
+          type="number"
+          step="any"
+          placeholder="Lat"
+          aria-label={`Stop ${index + 1} latitude`}
+          value={stop.lat}
+          onChange={(e) => onPatch(key, { lat: Number(e.target.value) })}
+        />
+        <Input
+          type="number"
+          step="any"
+          placeholder="Lng"
+          aria-label={`Stop ${index + 1} longitude`}
+          value={stop.lng}
+          onChange={(e) => onPatch(key, { lng: Number(e.target.value) })}
+        />
+      </p>
+      <p className="flex items-center gap-2 flex-wrap">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={looking}
+          onClick={() => setLookupRequested(true)}
+        >
+          <MapPin className="w-4 h-4 mr-1" /> Name from map
+        </Button>
+        {looking && (
+          <span className="text-xs text-secondary-500 flex items-center gap-1">
+            <Loader2 className="w-3 h-3 animate-spin" /> Finding a name…
+          </span>
+        )}
+        {canRemove && (
+          <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(key)}>
+            Remove stop
+          </Button>
+        )}
+      </p>
+    </Card>
+  );
+};
+
 export const RouteManagement: React.FC = () => {
   const { data: routes = [], isLoading } = useMyRoutes();
   const upsert = useUpsertRoute();
@@ -45,6 +137,14 @@ export const RouteManagement: React.FC = () => {
   const [editingId, setEditingId] = useState<string | undefined>();
   const [stops, setStops] = useState<StopDraft[]>([emptyStop(), emptyStop()]);
   const [faresFor, setFaresFor] = useState<string | undefined>();
+
+  const patchStop = useCallback((key: string, patch: Partial<RouteStopInput>) => {
+    setStops((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
+  }, []);
+
+  const removeStop = useCallback((key: string) => {
+    setStops((prev) => prev.filter((s) => s.key !== key));
+  }, []);
 
   const form = useForm<RouteFormValues>({
     resolver: zodResolver(routeSchema),
@@ -224,55 +324,14 @@ export const RouteManagement: React.FC = () => {
             <fieldset className="space-y-3 border-0 p-0">
               <Label>Stops (in order)</Label>
               {stops.map((stop, idx) => (
-                <Card key={stop.key} className="p-3 space-y-2">
-                  <Input
-                    placeholder={`Stop ${idx + 1} name`}
-                    value={stop.name}
-                    onChange={(e) =>
-                      setStops((prev) =>
-                        prev.map((s) => (s.key === stop.key ? { ...s, name: e.target.value } : s))
-                      )
-                    }
-                  />
-                  <p className="grid grid-cols-2 gap-2">
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Lat"
-                      value={stop.lat}
-                      onChange={(e) =>
-                        setStops((prev) =>
-                          prev.map((s) =>
-                            s.key === stop.key ? { ...s, lat: Number(e.target.value) } : s
-                          )
-                        )
-                      }
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Lng"
-                      value={stop.lng}
-                      onChange={(e) =>
-                        setStops((prev) =>
-                          prev.map((s) =>
-                            s.key === stop.key ? { ...s, lng: Number(e.target.value) } : s
-                          )
-                        )
-                      }
-                    />
-                  </p>
-                  {stops.length > 2 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStops((prev) => prev.filter((s) => s.key !== stop.key))}
-                    >
-                      Remove stop
-                    </Button>
-                  )}
-                </Card>
+                <StopFields
+                  key={stop.key}
+                  stop={stop}
+                  index={idx}
+                  canRemove={stops.length > 2}
+                  onPatch={patchStop}
+                  onRemove={removeStop}
+                />
               ))}
               <Button type="button" variant="outline" size="sm" onClick={() => setStops((p) => [...p, emptyStop()])}>
                 <Plus className="w-4 h-4 mr-1" /> Add stop
