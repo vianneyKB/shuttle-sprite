@@ -5,6 +5,33 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-23 — #28 Toggle is_active from the route card
+branch `routine/issue-28` → `Dev` · closes #28 · no migration
+
+**Why:** every route an operator created went straight onto the passenger map and could only be taken off it by deleting it — losing its stops and its fare history. A route is seasonal, suspended or still being built more often than it is permanently gone, so the card now carries the `is_active` flag the schema and `useShuttleRoutes` already respect.
+
+### Added
+| Item | Why |
+|---|---|
+| **Active / Inactive** switch on each route card, with an `Inactive` badge and "hidden from the passenger map" on the stop line | The flag existed in the database from day one with no way to reach it. The wording says what the switch does rather than naming the column. |
+| `useSetRouteActive` — writes `is_active` alone | Leaves the stops and the RPC-rebuilt LineString untouched; the existing `shuttle_routes_update` RLS policy already limits an operator to their own routes, so no new SQL. |
+| `buildRoutePayload(operatorId, input)` extracted from `useUpsertRoute`, plus 3 tests (suite 29 → 32) | The default-visible rule and the flag's round trip are now pure and tested. |
+
+### Changed
+| Item | Why |
+|---|---|
+| The edit dialog sends the route's current `isActive` | `useUpsertRoute` defaults the flag to `true`, so saving an edit to a hidden route used to put it back on the map. Mirrors how `VehicleManagement` passes `available`. |
+| Only the switch being saved is disabled while the write is in flight (`setActive.variables?.id`) | One slow request shouldn't freeze the toggle on every other card. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 32/32 · `npm run build` OK.
+
+### Not changed (deliberately)
+- No confirmation step when hiding a route with rides already booked on it — worth a look once dispatch settles, but nothing is cancelled by the switch.
+- #27 (polyline preview in the route editor) is still open: it needs the editor map from #25, which is unmerged in PR #65.
+
+---
+
 ## 2026-09-18 — #56 Route fares: per-route / per-segment, per-seat, effective-dated
 branch `feat/route-fares` → `Dev` · closes #56 · migration `20260918170000_route_fares.sql`
 

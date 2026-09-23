@@ -109,20 +109,23 @@ export type RouteStopInput = {
   lng: number;
 };
 
+/** Domain input → `shuttle_routes` row. A route is visible to passengers unless told otherwise. */
+export const buildRoutePayload = (operatorId: string, input: RouteInput) => ({
+  operator_id: operatorId,
+  name: input.name,
+  description: input.description ?? null,
+  operating_hours: input.operatingHours ?? null,
+  is_active: input.isActive ?? true,
+  geometry: (input.geometry ?? { type: "LineString", coordinates: [] }) as unknown as Json,
+});
+
 export const useUpsertRoute = () => {
   const qc = useQueryClient();
   const { user } = useAuth();
   return useMutation({
     mutationFn: async ({ id, input }: { id?: string; input: RouteInput }) => {
       if (!user) throw new Error("Not authenticated");
-      const payload = {
-        operator_id: user.id,
-        name: input.name,
-        description: input.description ?? null,
-        operating_hours: input.operatingHours ?? null,
-        is_active: input.isActive ?? true,
-        geometry: (input.geometry ?? { type: "LineString", coordinates: [] }) as unknown as Json,
-      };
+      const payload = buildRoutePayload(user.id, input);
       if (id) {
         const { error } = await supabase
           .from("shuttle_routes")
@@ -166,6 +169,25 @@ export const useSaveRouteStops = () => {
       });
       if (error) throw error;
       return ((data ?? []) as unknown as DbRouteStop[]).map(mapStop);
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["shuttle_routes"] }),
+  });
+};
+
+/**
+ * Show or hide a route on the passenger map. Only `is_active` is written, so the
+ * route's stops and rebuilt LineString are untouched; RLS (`shuttle_routes_update`)
+ * keeps an operator to their own routes.
+ */
+export const useSetRouteActive = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, isActive }: { id: string; isActive: boolean }) => {
+      const { error } = await supabase
+        .from("shuttle_routes")
+        .update({ is_active: isActive })
+        .eq("id", id);
+      if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shuttle_routes"] }),
   });
