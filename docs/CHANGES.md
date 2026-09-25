@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-25 — #33 Profile page (display name, phone)
+branch `routine/issue-33` → `Dev` · closes #33 · no migration (the columns and `profiles_update` RLS already exist)
+
+**Why:** `profiles` has held `display_name` and `phone` since the first migration, but nothing in the app could edit them — a passenger whose number changed, or who signed in with Google and never had one, had no way to fix it, and every booking needs a phone number. This adds the missing page and makes one phone rule serve sign-up, the profile page and the ride sheet.
+
+### Added
+| Item | Why |
+|---|---|
+| `/profile` page (protected): full name, mobile number, read-only email | The form resets to the stored row once it loads, so **Save changes** stays disabled until something actually differs. |
+| **Profile** link in the header — icon button on desktop, an entry in the mobile menu | The page needs a way in on a phone, where the header collapses to a sheet. |
+| `src/lib/profile.ts` — `PHONE_PATTERN`, `isValidPhone`, `profileFormSchema`, `profileChanges` | `profileChanges` returns only the fields that differ: `profiles` has an `updated_at` trigger, so an untouched Save would otherwise still write a row. |
+| 10 tests for the above (suite 29 → 39) | Pins the number formats a South African passenger actually types, and that whitespace-only edits count as no change. |
+
+### Changed
+| Item | Why |
+|---|---|
+| Sign-up and the ride sheet now use `PHONE_PATTERN` / `isValidPhone` instead of their own copies of the same regex | Three places validated the same thing; the profile page would have been a fourth. |
+| Request-a-ride sheet shows the number the driver will call when the profile has one | The sheet only asks for a number when it is missing (2026-09-18), so the passenger could not see which one was on file. |
+| Header: on `/profile` neither Passenger nor Operator is highlighted in the role switch | `!isOperatorRoute` made Passenger look like the current view on any non-operator page. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
+
+### Not changed (deliberately)
+- `avatar_url` and `location` stay unedited: an avatar needs the Storage bucket from #34, and nothing in the app reads `location` yet.
+- Email is read-only — changing it is a Supabase Auth flow (re-confirmation), not a `profiles` write.
+- `BookingModal` already prefilled name / mobile / email from the profile (2026-09-18), so it is untouched here.
+
+---
+
 ## 2026-09-18 — #56 Route fares: per-route / per-segment, per-seat, effective-dated
 branch `feat/route-fares` → `Dev` · closes #56 · migration `20260918170000_route_fares.sql`
 

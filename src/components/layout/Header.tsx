@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Car, Users, LogOut, Menu } from 'lucide-react';
+import { Car, Users, LogOut, Menu, User } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -11,6 +11,9 @@ export const Header: React.FC = () => {
   const canSwitchRole = isOperator || isAdmin;
   const location = useLocation();
   const isOperatorRoute = location.pathname.startsWith('/operator');
+  // On /profile neither side of the role switch is the current view.
+  const isProfileRoute = location.pathname.startsWith('/profile');
+  const passengerActive = !isOperatorRoute && !isProfileRoute;
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -21,7 +24,7 @@ export const Header: React.FC = () => {
         variant="ghost"
         size="sm"
         className={`w-full justify-start min-h-11 ${
-          !isOperatorRoute ? 'gradient-primary text-white' : ''
+          passengerActive ? 'gradient-primary text-white' : ''
         }`}
         onClick={() => setMenuOpen(false)}
       >
@@ -70,7 +73,7 @@ export const Header: React.FC = () => {
                 variant="ghost"
                 size="sm"
                 className={`px-3 sm:px-4 py-2 rounded-full min-h-10 ${
-                  !isOperatorRoute
+                  passengerActive
                     ? 'gradient-primary text-white shadow-elevation'
                     : 'text-secondary-600'
                 }`}
@@ -105,6 +108,19 @@ export const Header: React.FC = () => {
                   {user.email}
                 </span>
               )}
+              {!isMobile && (
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className={`min-h-10 ${isProfileRoute ? 'text-primary-600' : ''}`}
+                >
+                  <Link to="/profile" aria-current={isProfileRoute ? 'page' : undefined}>
+                    <User className="w-4 h-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Profile</span>
+                  </Link>
+                </Button>
+              )}
               {!isMobile ? (
                 <Button variant="ghost" size="sm" className="min-h-10" onClick={() => signOut()}>
                   <LogOut className="w-4 h-4 sm:mr-2" />
@@ -133,6 +149,17 @@ export const Header: React.FC = () => {
                           {roleLinks}
                         </div>
                       )}
+                      <Button
+                        asChild
+                        variant="outline"
+                        className="w-full min-h-11 justify-start"
+                        onClick={() => setMenuOpen(false)}
+                      >
+                        <Link to="/profile">
+                          <User className="w-4 h-4 mr-2" />
+                          Profile
+                        </Link>
+                      </Button>
                       <Button
                         variant="outline"
                         className="w-full min-h-11"

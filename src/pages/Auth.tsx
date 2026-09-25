@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { lovable } from "@/integrations/lovable";
 import { useAuth } from "@/context/AuthContext";
 import { PageSeo } from "@/components/seo/PageSeo";
+import { PHONE_PATTERN } from "@/lib/profile";
 
 const signInSchema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -23,10 +24,7 @@ const signInSchema = z.object({
 
 const signUpSchema = z.object({
   displayName: z.string().min(2, "Enter your name").max(80),
-  phone: z
-    .string()
-    .trim()
-    .regex(/^\+?[0-9 ()-]{7,20}$/, "Enter a valid mobile number"),
+  phone: z.string().trim().regex(PHONE_PATTERN, "Enter a valid mobile number"),
   email: z.string().email("Enter a valid email"),
   password: z.string().min(8, "At least 8 characters"),
   role: z.enum(["customer", "operator"]),
