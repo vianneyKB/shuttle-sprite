@@ -7,12 +7,15 @@ import {
   useUpsertRoute,
   useSaveRouteStops,
   useDeleteRoute,
+  useSetRouteActive,
   type RouteStopInput,
 } from "@/hooks/useRoutes";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -175,6 +178,7 @@ export const RouteManagement: React.FC = () => {
   const upsert = useUpsertRoute();
   const saveStops = useSaveRouteStops();
   const remove = useDeleteRoute();
+  const setActive = useSetRouteActive();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>();
   const [stops, setStops] = useState<StopDraft[]>([]);
@@ -236,6 +240,8 @@ export const RouteManagement: React.FC = () => {
           name: values.name,
           description: values.description,
           operatingHours: values.operatingHours,
+          // Editing a hidden route must not quietly put it back on the map.
+          isActive: editingId ? routes.find((r) => r.id === editingId)?.isActive ?? true : true,
         },
       });
       await saveStops.mutateAsync({
@@ -256,6 +262,17 @@ export const RouteManagement: React.FC = () => {
         await remove.mutateAsync(routeId).catch(() => undefined);
       }
       toast.error(e instanceof Error ? e.message : "Failed to save route");
+    }
+  };
+
+  const onToggleActive = async (id: string, isActive: boolean) => {
+    try {
+      await setActive.mutateAsync({ id, isActive });
+      toast.success(
+        isActive ? "Route is live on the passenger map" : "Route hidden from the passenger map"
+      );
+    } catch (e: unknown) {
+      toast.error(e instanceof Error ? e.message : "Failed to update route");
     }
   };
 
@@ -295,6 +312,7 @@ export const RouteManagement: React.FC = () => {
                     <p className="flex items-center gap-2 font-semibold text-lg">
                       <Route className="w-5 h-5 text-primary-600" />
                       {route.name}
+                      {!route.isActive && <Badge variant="secondary">Inactive</Badge>}
                     </p>
                     {route.description && (
                       <p className="text-sm text-secondary-600 mt-1">{route.description}</p>
@@ -302,9 +320,24 @@ export const RouteManagement: React.FC = () => {
                     <p className="text-xs text-secondary-500 mt-2">
                       {route.stops.length} stops
                       {route.operatingHours ? ` · ${route.operatingHours}` : ""}
+                      {!route.isActive ? " · hidden from the passenger map" : ""}
                     </p>
                   </>
-                  <p className="flex gap-2">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <span className="flex items-center gap-2 mr-1">
+                      <Switch
+                        id={`route-active-${route.id}`}
+                        checked={route.isActive}
+                        disabled={setActive.isPending && setActive.variables?.id === route.id}
+                        onCheckedChange={(checked) => onToggleActive(route.id, checked)}
+                      />
+                      <Label
+                        htmlFor={`route-active-${route.id}`}
+                        className="text-sm font-normal text-secondary-600"
+                      >
+                        {route.isActive ? "Active" : "Inactive"}
+                      </Label>
+                    </span>
                     <Button variant="outline" size="sm" onClick={() => setFaresFor(route.id)}>
                       <Coins className="w-4 h-4 mr-1" /> Fares
                     </Button>
