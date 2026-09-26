@@ -15,9 +15,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, Loader2, Route, Coins, MapPin } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Plus,
+  Trash2,
+  Edit2,
+  Loader2,
+  Route,
+  Coins,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  MapPin,
+} from "lucide-react";
 import { RouteFaresDialog } from "./RouteFaresDialog";
-import { useReverseGeocode } from "@/hooks/useReverseGeocode";
+import { RouteStopsMap } from "./RouteStopsMap";
+import { formatCoord, moveStop, nextStopSeed, toCoord } from "@/lib/routeStops";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const routeSchema = z.object({
@@ -30,100 +44,128 @@ type RouteFormValues = z.infer<typeof routeSchema>;
 
 type StopDraft = RouteStopInput & { key: string };
 
-const emptyStop = (): StopDraft => ({
+const newStop = (lat: number, lng: number): StopDraft => ({
   key: crypto.randomUUID(),
   name: "",
-  lat: -26.2041,
-  lng: 28.0473,
+  lat,
+  lng,
 });
 
-type StopFieldsProps = {
+type StopRowProps = {
   stop: StopDraft;
   index: number;
-  canRemove: boolean;
-  onPatch: (key: string, patch: Partial<RouteStopInput>) => void;
-  onRemove: (key: string) => void;
+  total: number;
+  selected: boolean;
+  onSelect: () => void;
+  onChange: (patch: Partial<RouteStopInput>) => void;
+  onMove: (delta: number) => void;
+  onRemove: () => void;
 };
 
 /**
- * One stop row. Once the stop has been placed somewhere — a coordinate typed
- * here, or a marker dropped on the map — its name is prefilled from Nominatim
- * if the operator hasn't written one. The name stays a plain text field: the
- * suggestion is a starting point, never a lock, and a failed lookup is silent.
+ * One stop in the ordered list. The map is the primary way to place a stop, so
+ * the raw numbers sit behind a collapsible "precise coordinates" section for
+ * the cases a click can't reach (a surveyed point, a pasted coordinate).
  */
-const StopFields: React.FC<StopFieldsProps> = ({ stop, index, canRemove, onPatch, onRemove }) => {
-  const { key } = stop;
-  const placedAt = useRef({ lat: stop.lat, lng: stop.lng });
-  const [nameTouched, setNameTouched] = useState(stop.name.trim() !== "");
-  const [lookupRequested, setLookupRequested] = useState(false);
-
-  const moved = stop.lat !== placedAt.current.lat || stop.lng !== placedAt.current.lng;
-  const wantsName = lookupRequested || (moved && !nameTouched && stop.name.trim() === "");
-
-  const { name: suggestion, isFetching, isFetched, isDebouncing } = useReverseGeocode(
-    { lat: stop.lat, lng: stop.lng },
-    wantsName
-  );
-
-  useEffect(() => {
-    if (!wantsName || isDebouncing || isFetching || !isFetched) return;
-    if (suggestion) onPatch(key, { name: suggestion });
-    setLookupRequested(false);
-  }, [wantsName, isDebouncing, isFetching, isFetched, suggestion, onPatch, key]);
-
-  const looking = wantsName && (isDebouncing || isFetching);
+const StopRow: React.FC<StopRowProps> = ({
+  stop,
+  index,
+  total,
+  selected,
+  onSelect,
+  onChange,
+  onMove,
+  onRemove,
+}) => {
+  const [showCoords, setShowCoords] = useState(false);
 
   return (
-    <Card className="p-3 space-y-2">
-      <Input
-        placeholder={`Stop ${index + 1} name`}
-        aria-label={`Stop ${index + 1} name`}
-        value={stop.name}
-        onChange={(e) => {
-          setNameTouched(true);
-          setLookupRequested(false);
-          onPatch(key, { name: e.target.value });
-        }}
-      />
-      <p className="grid grid-cols-2 gap-2">
+    <Card
+      className={cn("p-3 space-y-2", selected && "ring-2 ring-primary-300")}
+      onFocusCapture={onSelect}
+    >
+      <p className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="flex items-center justify-center shrink-0 w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold"
+        >
+          {index + 1}
+        </span>
         <Input
-          type="number"
-          step="any"
-          placeholder="Lat"
-          aria-label={`Stop ${index + 1} latitude`}
-          value={stop.lat}
-          onChange={(e) => onPatch(key, { lat: Number(e.target.value) })}
-        />
-        <Input
-          type="number"
-          step="any"
-          placeholder="Lng"
-          aria-label={`Stop ${index + 1} longitude`}
-          value={stop.lng}
-          onChange={(e) => onPatch(key, { lng: Number(e.target.value) })}
+          aria-label={`Stop ${index + 1} name`}
+          placeholder={`Stop ${index + 1} name`}
+          value={stop.name}
+          onChange={(e) => onChange({ name: e.target.value })}
         />
       </p>
-      <p className="flex items-center gap-2 flex-wrap">
+      <p className="flex items-center justify-between gap-2">
+        <span className="flex gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Move ${stop.name || `stop ${index + 1}`} up`}
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+          >
+            <ArrowUp className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Move ${stop.name || `stop ${index + 1}`} down`}
+            disabled={index === total - 1}
+            onClick={() => onMove(1)}
+          >
+            <ArrowDown className="w-4 h-4" />
+          </Button>
+        </span>
         <Button
           type="button"
           variant="ghost"
           size="sm"
-          disabled={looking}
-          onClick={() => setLookupRequested(true)}
+          className="text-secondary-600"
+          aria-label={`Remove ${stop.name || `stop ${index + 1}`}`}
+          onClick={onRemove}
         >
-          <MapPin className="w-4 h-4 mr-1" /> Name from map
+          <Trash2 className="w-4 h-4" />
         </Button>
-        {looking && (
-          <span className="text-xs text-secondary-500 flex items-center gap-1">
-            <Loader2 className="w-3 h-3 animate-spin" /> Finding a name…
-          </span>
-        )}
-        {canRemove && (
-          <Button type="button" variant="ghost" size="sm" onClick={() => onRemove(key)}>
-            Remove stop
-          </Button>
-        )}
       </p>
+      <Collapsible open={showCoords} onOpenChange={setShowCoords}>
+        <CollapsibleTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="w-full justify-between text-xs text-secondary-600">
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {formatCoord(stop.lat)}, {formatCoord(stop.lng)}
+            </span>
+            <span className="flex items-center gap-1">
+              Precise coordinates
+              <ChevronDown className={cn("w-3 h-3 transition-transform", showCoords && "rotate-180")} />
+            </span>
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <span className="grid grid-cols-2 gap-2">
+            <Input
+              type="number"
+              step="any"
+              aria-label={`Stop ${index + 1} latitude`}
+              placeholder="Lat"
+              value={stop.lat}
+              onChange={(e) => onChange({ lat: toCoord(e.target.value, stop.lat) })}
+            />
+            <Input
+              type="number"
+              step="any"
+              aria-label={`Stop ${index + 1} longitude`}
+              placeholder="Lng"
+              value={stop.lng}
+              onChange={(e) => onChange({ lng: toCoord(e.target.value, stop.lng) })}
+            />
+          </span>
+        </CollapsibleContent>
+      </Collapsible>
     </Card>
   );
 };
@@ -135,16 +177,15 @@ export const RouteManagement: React.FC = () => {
   const remove = useDeleteRoute();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>();
-  const [stops, setStops] = useState<StopDraft[]>([emptyStop(), emptyStop()]);
+  const [stops, setStops] = useState<StopDraft[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [faresFor, setFaresFor] = useState<string | undefined>();
 
-  const patchStop = useCallback((key: string, patch: Partial<RouteStopInput>) => {
-    setStops((prev) => prev.map((s) => (s.key === key ? { ...s, ...patch } : s)));
-  }, []);
-
-  const removeStop = useCallback((key: string) => {
-    setStops((prev) => prev.filter((s) => s.key !== key));
-  }, []);
+  const addStopAt = (lat: number, lng: number) => {
+    const stop = newStop(lat, lng);
+    setStops((prev) => [...prev, stop]);
+    setSelectedKey(stop.key);
+  };
 
   const form = useForm<RouteFormValues>({
     resolver: zodResolver(routeSchema),
@@ -154,7 +195,8 @@ export const RouteManagement: React.FC = () => {
   const openCreate = () => {
     setEditingId(undefined);
     form.reset({ name: "", description: "", operatingHours: "" });
-    setStops([emptyStop(), emptyStop()]);
+    setStops([]);
+    setSelectedKey(null);
     setOpen(true);
   };
 
@@ -168,16 +210,15 @@ export const RouteManagement: React.FC = () => {
       operatingHours: route.operatingHours ?? "",
     });
     setStops(
-      route.stops.length > 0
-        ? route.stops.map((s) => ({
-            key: s.id,
-            name: s.name,
-            description: s.description,
-            lat: s.lat,
-            lng: s.lng,
-          }))
-        : [emptyStop(), emptyStop()]
+      route.stops.map((s) => ({
+        key: s.id,
+        name: s.name,
+        description: s.description,
+        lat: s.lat,
+        lng: s.lng,
+      }))
     );
+    setSelectedKey(null);
     setOpen(true);
   };
 
@@ -323,17 +364,59 @@ export const RouteManagement: React.FC = () => {
 
             <fieldset className="space-y-3 border-0 p-0">
               <Label>Stops (in order)</Label>
-              {stops.map((stop, idx) => (
-                <StopFields
-                  key={stop.key}
-                  stop={stop}
-                  index={idx}
-                  canRemove={stops.length > 2}
-                  onPatch={patchStop}
-                  onRemove={removeStop}
-                />
-              ))}
-              <Button type="button" variant="outline" size="sm" onClick={() => setStops((p) => [...p, emptyStop()])}>
+              <p className="text-xs text-secondary-600">
+                Click the map to add a stop, drag a pin to move it. Pins are numbered in pickup order.
+              </p>
+              <RouteStopsMap
+                stops={stops}
+                selectedKey={selectedKey}
+                onAdd={addStopAt}
+                onMove={(key, lat, lng) =>
+                  setStops((prev) => prev.map((s) => (s.key === key ? { ...s, lat, lng } : s)))
+                }
+                onSelect={setSelectedKey}
+              />
+              {stops.length === 0 ? (
+                <p className="text-sm text-secondary-600 text-center py-2">
+                  No stops yet — click the map to place the first one.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {stops.map((stop, idx) => (
+                    <li key={stop.key}>
+                      <StopRow
+                        stop={stop}
+                        index={idx}
+                        total={stops.length}
+                        selected={selectedKey === stop.key}
+                        onSelect={() => setSelectedKey(stop.key)}
+                        onChange={(patch) =>
+                          setStops((prev) =>
+                            prev.map((s) => (s.key === stop.key ? { ...s, ...patch } : s))
+                          )
+                        }
+                        onMove={(delta) => {
+                          setSelectedKey(stop.key);
+                          setStops((prev) => moveStop(prev, prev.findIndex((s) => s.key === stop.key), delta));
+                        }}
+                        onRemove={() => {
+                          setStops((prev) => prev.filter((s) => s.key !== stop.key));
+                          setSelectedKey((k) => (k === stop.key ? null : k));
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const seed = nextStopSeed(stops);
+                  addStopAt(seed.lat, seed.lng);
+                }}
+              >
                 <Plus className="w-4 h-4 mr-1" /> Add stop
               </Button>
             </fieldset>

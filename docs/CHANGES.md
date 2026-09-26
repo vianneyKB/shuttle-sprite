@@ -5,33 +5,33 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
-## 2026-09-22 — #26 Reverse-geocode stop names (Nominatim)
-branch `routine/issue-26` → `Dev` · closes #26 · no migration
+## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
+branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
 
-**Why:** an operator building a route had to type every stop name by hand next to a pair of coordinates. Once a stop has a position, OpenStreetMap already knows what is there — prefill the name and let the operator correct it. Nominatim is free but rate-limited (1 req/s) and asks callers to identify themselves, so the cap belongs in one place in the app, not in each caller.
+**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
 
 ### Added
 | Item | Why |
 |---|---|
-| `src/lib/geocode.ts`: `buildReverseUrl`, `stopNameFromReverse`, `reverseGeocode`, `roundCoord`, `isValidLatLng` | One serial queue holds the **whole app** to 1 request/second, whatever the UI does. `stopNameFromReverse` picks a stop-sized name (`name`/amenity/building/road, qualified by suburb or town) and returns `""` when nothing is usable, so a blank answer never overwrites a real name. Coordinates round to ~1 m for a stable cache key. |
-| `useReverseGeocode(coords, enabled)` hook | 800 ms debounce (dragging or typing a coordinate makes one request), TanStack Query cache per rounded coordinate, `retry: false`. |
-| Route editor: name prefilled once a stop is positioned, plus a **Name from map** button and a "Finding a name…" hint | Auto-fill only when the operator hasn't typed a name; the button re-looks-up on demand and overwrites. Typing in the name field stops auto-fill for that stop. |
-| `VITE_NOMINATIM_EMAIL` / `VITE_NOMINATIM_URL` (both optional), typed in `vite-env.d.ts` and documented in `.env.example` + README | The policy wants a contact address; the URL lets a busier deployment point at its own instance. |
-| 14 tests in `src/lib/__tests__/geocode.test.ts` (suite now 43) | URL shape, name mapping and fallbacks, and that a second lookup cannot leave inside the 1 s window. |
+| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
+| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
+| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
+| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
 
 ### Changed
 | Item | Why |
 |---|---|
-| `RouteManagement`: stop rows extracted into a `StopFields` child; parent exposes stable `patchStop` / `removeStop` callbacks | A stop row now owns a hook, so it has to be a component. Stable callbacks keep the auto-fill effect from re-running on every keystroke. Lat/lng/name inputs gained `aria-label`s. |
+| The lat/lng inputs moved into a collapsible **Precise coordinates** section per stop, with the current pair shown on the trigger | Still there for a surveyed or pasted coordinate, no longer the primary way in. |
+| A new route starts with **no** stops instead of two prefilled at the Johannesburg default | Two pins stacked on the same default point read as one stop in the wrong place. The dialog now says "click the map to place the first one"; the existing "at least 2 named stops" check still guards Save. |
+| The map fits the existing stops once when the dialog opens (after `invalidateSize`, since the dialog is still animating when Leaflet measures) | Editing a route opens on that route. Refitting on every drag would yank the map away mid-edit. |
 
 ### Verification
-`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 43/43 · `npm run build` OK.
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
 
 ### Not changed (deliberately)
-- **Nothing blocks on geocoding.** A failed or empty lookup is silent; the name field is plain text and Save is unaffected.
-- `User-Agent` and `Referer` cannot be set from browser `fetch` (forbidden header names). The browser sends `Referer` itself, which identifies the deployment; `VITE_NOMINATIM_EMAIL` adds the contact address.
-- Forward search ("type a place, drop a pin") is not part of this issue.
-- Clicking the map to place a stop is #25 (open in PR #65); this works off whatever sets a stop's coordinates, so it applies there too once merged.
+- **No polyline preview** between the stops in the editor — that is #27.
+- **No stop names from the map** — reverse geocoding is #26; a clicked stop still needs a name typed.
+- Drag-and-drop reordering of the list (the issue marks it optional).
 
 ---
 
