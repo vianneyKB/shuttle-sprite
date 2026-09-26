@@ -10,6 +10,7 @@ import { useCreateRideRequest } from "@/hooks/useRideRequests";
 import { useMyProfile, useUpdateMyProfile } from "@/hooks/useProfile";
 import { useRideFareQuote } from "@/hooks/useRouteFares";
 import { formatMoney } from "@/lib/money";
+import { isValidPhone } from "@/lib/profile";
 import { earliestScheduleTime, fromLocalInputValue, toLocalInputValue } from "@/lib/schedule";
 import { toast } from "sonner";
 
@@ -53,7 +54,7 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
       toast.error("Select a destination stop");
       return;
     }
-    if (needsPhone && !/^\+?[0-9 ()-]{7,20}$/.test(phone.trim())) {
+    if (needsPhone && !isValidPhone(phone)) {
       toast.error("Add a mobile number so the driver can reach you");
       return;
     }
@@ -170,6 +171,12 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
               onChange={(e) => setPhone(e.target.value)}
             />
           </fieldset>
+        )}
+
+        {!needsPhone && profile?.phone && (
+          <p className="text-xs text-secondary-500">
+            The driver will call <strong>{profile.phone}</strong> — change it on your profile page.
+          </p>
         )}
 
         <fieldset className="space-y-2 border-0 p-0">

@@ -47,6 +47,7 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 | Path | Role | Description |
 |------|------|-------------|
 | `/` | Authenticated | Passenger home (map, fleet, my rides) |
+| `/profile` | Authenticated | Your name and mobile number |
 | `/operator` | Operator or admin | Operator dashboard |
 | `/vendor` | — | Redirects to `/operator` |
 | `/auth` | Public | Sign in / sign up |
