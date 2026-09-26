@@ -5,30 +5,33 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
-## 2026-09-23 — #28 Toggle is_active from the route card
-branch `routine/issue-28` → `Dev` · closes #28 · no migration
+## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
+branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
 
-**Why:** every route an operator created went straight onto the passenger map and could only be taken off it by deleting it — losing its stops and its fare history. A route is seasonal, suspended or still being built more often than it is permanently gone, so the card now carries the `is_active` flag the schema and `useShuttleRoutes` already respect.
+**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
 
 ### Added
 | Item | Why |
 |---|---|
-| **Active / Inactive** switch on each route card, with an `Inactive` badge and "hidden from the passenger map" on the stop line | The flag existed in the database from day one with no way to reach it. The wording says what the switch does rather than naming the column. |
-| `useSetRouteActive` — writes `is_active` alone | Leaves the stops and the RPC-rebuilt LineString untouched; the existing `shuttle_routes_update` RLS policy already limits an operator to their own routes, so no new SQL. |
-| `buildRoutePayload(operatorId, input)` extracted from `useUpsertRoute`, plus 3 tests (suite 29 → 32) | The default-visible rule and the flag's round trip are now pure and tested. |
+| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
+| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
+| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
+| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
 
 ### Changed
 | Item | Why |
 |---|---|
-| The edit dialog sends the route's current `isActive` | `useUpsertRoute` defaults the flag to `true`, so saving an edit to a hidden route used to put it back on the map. Mirrors how `VehicleManagement` passes `available`. |
-| Only the switch being saved is disabled while the write is in flight (`setActive.variables?.id`) | One slow request shouldn't freeze the toggle on every other card. |
+| The lat/lng inputs moved into a collapsible **Precise coordinates** section per stop, with the current pair shown on the trigger | Still there for a surveyed or pasted coordinate, no longer the primary way in. |
+| A new route starts with **no** stops instead of two prefilled at the Johannesburg default | Two pins stacked on the same default point read as one stop in the wrong place. The dialog now says "click the map to place the first one"; the existing "at least 2 named stops" check still guards Save. |
+| The map fits the existing stops once when the dialog opens (after `invalidateSize`, since the dialog is still animating when Leaflet measures) | Editing a route opens on that route. Refitting on every drag would yank the map away mid-edit. |
 
 ### Verification
-`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 32/32 · `npm run build` OK.
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
 
 ### Not changed (deliberately)
-- No confirmation step when hiding a route with rides already booked on it — worth a look once dispatch settles, but nothing is cancelled by the switch.
-- #27 (polyline preview in the route editor) is still open: it needs the editor map from #25, which is unmerged in PR #65.
+- **No polyline preview** between the stops in the editor — that is #27.
+- **No stop names from the map** — reverse geocoding is #26; a clicked stop still needs a name typed.
+- Drag-and-drop reordering of the list (the issue marks it optional).
 
 ---
 

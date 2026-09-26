@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,8 +18,23 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Plus, Trash2, Edit2, Loader2, Route, Coins } from "lucide-react";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Plus,
+  Trash2,
+  Edit2,
+  Loader2,
+  Route,
+  Coins,
+  ArrowUp,
+  ArrowDown,
+  ChevronDown,
+  MapPin,
+} from "lucide-react";
 import { RouteFaresDialog } from "./RouteFaresDialog";
+import { RouteStopsMap } from "./RouteStopsMap";
+import { formatCoord, moveStop, nextStopSeed, toCoord } from "@/lib/routeStops";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 const routeSchema = z.object({
@@ -32,12 +47,131 @@ type RouteFormValues = z.infer<typeof routeSchema>;
 
 type StopDraft = RouteStopInput & { key: string };
 
-const emptyStop = (): StopDraft => ({
+const newStop = (lat: number, lng: number): StopDraft => ({
   key: crypto.randomUUID(),
   name: "",
-  lat: -26.2041,
-  lng: 28.0473,
+  lat,
+  lng,
 });
+
+type StopRowProps = {
+  stop: StopDraft;
+  index: number;
+  total: number;
+  selected: boolean;
+  onSelect: () => void;
+  onChange: (patch: Partial<RouteStopInput>) => void;
+  onMove: (delta: number) => void;
+  onRemove: () => void;
+};
+
+/**
+ * One stop in the ordered list. The map is the primary way to place a stop, so
+ * the raw numbers sit behind a collapsible "precise coordinates" section for
+ * the cases a click can't reach (a surveyed point, a pasted coordinate).
+ */
+const StopRow: React.FC<StopRowProps> = ({
+  stop,
+  index,
+  total,
+  selected,
+  onSelect,
+  onChange,
+  onMove,
+  onRemove,
+}) => {
+  const [showCoords, setShowCoords] = useState(false);
+
+  return (
+    <Card
+      className={cn("p-3 space-y-2", selected && "ring-2 ring-primary-300")}
+      onFocusCapture={onSelect}
+    >
+      <p className="flex items-center gap-2">
+        <span
+          aria-hidden
+          className="flex items-center justify-center shrink-0 w-6 h-6 rounded-full bg-primary-600 text-white text-xs font-bold"
+        >
+          {index + 1}
+        </span>
+        <Input
+          aria-label={`Stop ${index + 1} name`}
+          placeholder={`Stop ${index + 1} name`}
+          value={stop.name}
+          onChange={(e) => onChange({ name: e.target.value })}
+        />
+      </p>
+      <p className="flex items-center justify-between gap-2">
+        <span className="flex gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Move ${stop.name || `stop ${index + 1}`} up`}
+            disabled={index === 0}
+            onClick={() => onMove(-1)}
+          >
+            <ArrowUp className="w-4 h-4" />
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            aria-label={`Move ${stop.name || `stop ${index + 1}`} down`}
+            disabled={index === total - 1}
+            onClick={() => onMove(1)}
+          >
+            <ArrowDown className="w-4 h-4" />
+          </Button>
+        </span>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-secondary-600"
+          aria-label={`Remove ${stop.name || `stop ${index + 1}`}`}
+          onClick={onRemove}
+        >
+          <Trash2 className="w-4 h-4" />
+        </Button>
+      </p>
+      <Collapsible open={showCoords} onOpenChange={setShowCoords}>
+        <CollapsibleTrigger asChild>
+          <Button type="button" variant="ghost" size="sm" className="w-full justify-between text-xs text-secondary-600">
+            <span className="flex items-center gap-1">
+              <MapPin className="w-3 h-3" />
+              {formatCoord(stop.lat)}, {formatCoord(stop.lng)}
+            </span>
+            <span className="flex items-center gap-1">
+              Precise coordinates
+              <ChevronDown className={cn("w-3 h-3 transition-transform", showCoords && "rotate-180")} />
+            </span>
+          </Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent className="pt-2">
+          <span className="grid grid-cols-2 gap-2">
+            <Input
+              type="number"
+              step="any"
+              aria-label={`Stop ${index + 1} latitude`}
+              placeholder="Lat"
+              value={stop.lat}
+              onChange={(e) => onChange({ lat: toCoord(e.target.value, stop.lat) })}
+            />
+            <Input
+              type="number"
+              step="any"
+              aria-label={`Stop ${index + 1} longitude`}
+              placeholder="Lng"
+              value={stop.lng}
+              onChange={(e) => onChange({ lng: toCoord(e.target.value, stop.lng) })}
+            />
+          </span>
+        </CollapsibleContent>
+      </Collapsible>
+    </Card>
+  );
+};
 
 export const RouteManagement: React.FC = () => {
   const { data: routes = [], isLoading } = useMyRoutes();
@@ -47,8 +181,15 @@ export const RouteManagement: React.FC = () => {
   const setActive = useSetRouteActive();
   const [open, setOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | undefined>();
-  const [stops, setStops] = useState<StopDraft[]>([emptyStop(), emptyStop()]);
+  const [stops, setStops] = useState<StopDraft[]>([]);
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [faresFor, setFaresFor] = useState<string | undefined>();
+
+  const addStopAt = (lat: number, lng: number) => {
+    const stop = newStop(lat, lng);
+    setStops((prev) => [...prev, stop]);
+    setSelectedKey(stop.key);
+  };
 
   const form = useForm<RouteFormValues>({
     resolver: zodResolver(routeSchema),
@@ -58,7 +199,8 @@ export const RouteManagement: React.FC = () => {
   const openCreate = () => {
     setEditingId(undefined);
     form.reset({ name: "", description: "", operatingHours: "" });
-    setStops([emptyStop(), emptyStop()]);
+    setStops([]);
+    setSelectedKey(null);
     setOpen(true);
   };
 
@@ -72,16 +214,15 @@ export const RouteManagement: React.FC = () => {
       operatingHours: route.operatingHours ?? "",
     });
     setStops(
-      route.stops.length > 0
-        ? route.stops.map((s) => ({
-            key: s.id,
-            name: s.name,
-            description: s.description,
-            lat: s.lat,
-            lng: s.lng,
-          }))
-        : [emptyStop(), emptyStop()]
+      route.stops.map((s) => ({
+        key: s.id,
+        name: s.name,
+        description: s.description,
+        lat: s.lat,
+        lng: s.lng,
+      }))
     );
+    setSelectedKey(null);
     setOpen(true);
   };
 
@@ -256,58 +397,59 @@ export const RouteManagement: React.FC = () => {
 
             <fieldset className="space-y-3 border-0 p-0">
               <Label>Stops (in order)</Label>
-              {stops.map((stop, idx) => (
-                <Card key={stop.key} className="p-3 space-y-2">
-                  <Input
-                    placeholder={`Stop ${idx + 1} name`}
-                    value={stop.name}
-                    onChange={(e) =>
-                      setStops((prev) =>
-                        prev.map((s) => (s.key === stop.key ? { ...s, name: e.target.value } : s))
-                      )
-                    }
-                  />
-                  <p className="grid grid-cols-2 gap-2">
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Lat"
-                      value={stop.lat}
-                      onChange={(e) =>
-                        setStops((prev) =>
-                          prev.map((s) =>
-                            s.key === stop.key ? { ...s, lat: Number(e.target.value) } : s
+              <p className="text-xs text-secondary-600">
+                Click the map to add a stop, drag a pin to move it. Pins are numbered in pickup order.
+              </p>
+              <RouteStopsMap
+                stops={stops}
+                selectedKey={selectedKey}
+                onAdd={addStopAt}
+                onMove={(key, lat, lng) =>
+                  setStops((prev) => prev.map((s) => (s.key === key ? { ...s, lat, lng } : s)))
+                }
+                onSelect={setSelectedKey}
+              />
+              {stops.length === 0 ? (
+                <p className="text-sm text-secondary-600 text-center py-2">
+                  No stops yet — click the map to place the first one.
+                </p>
+              ) : (
+                <ul className="space-y-2">
+                  {stops.map((stop, idx) => (
+                    <li key={stop.key}>
+                      <StopRow
+                        stop={stop}
+                        index={idx}
+                        total={stops.length}
+                        selected={selectedKey === stop.key}
+                        onSelect={() => setSelectedKey(stop.key)}
+                        onChange={(patch) =>
+                          setStops((prev) =>
+                            prev.map((s) => (s.key === stop.key ? { ...s, ...patch } : s))
                           )
-                        )
-                      }
-                    />
-                    <Input
-                      type="number"
-                      step="any"
-                      placeholder="Lng"
-                      value={stop.lng}
-                      onChange={(e) =>
-                        setStops((prev) =>
-                          prev.map((s) =>
-                            s.key === stop.key ? { ...s, lng: Number(e.target.value) } : s
-                          )
-                        )
-                      }
-                    />
-                  </p>
-                  {stops.length > 2 && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setStops((prev) => prev.filter((s) => s.key !== stop.key))}
-                    >
-                      Remove stop
-                    </Button>
-                  )}
-                </Card>
-              ))}
-              <Button type="button" variant="outline" size="sm" onClick={() => setStops((p) => [...p, emptyStop()])}>
+                        }
+                        onMove={(delta) => {
+                          setSelectedKey(stop.key);
+                          setStops((prev) => moveStop(prev, prev.findIndex((s) => s.key === stop.key), delta));
+                        }}
+                        onRemove={() => {
+                          setStops((prev) => prev.filter((s) => s.key !== stop.key));
+                          setSelectedKey((k) => (k === stop.key ? null : k));
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  const seed = nextStopSeed(stops);
+                  addStopAt(seed.lat, seed.lng);
+                }}
+              >
                 <Plus className="w-4 h-4 mr-1" /> Add stop
               </Button>
             </fieldset>
