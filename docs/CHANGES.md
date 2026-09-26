@@ -5,33 +5,57 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
-## 2026-09-25 — #33 Profile page (display name, phone)
-branch `routine/issue-33` → `Dev` · closes #33 · no migration (the columns and `profiles_update` RLS already exist)
+## 2026-09-24 — #30 Edge Functions: Paystack checkout + webhook (provider-abstracted)
+branch `routine/issue-30` → `Dev` · closes #30 · migration `20260924041653_payment_provider_refs.sql`
 
-**Why:** `profiles` has held `display_name` and `phone` since the first migration, but nothing in the app could edit them — a passenger whose number changed, or who signed in with Google and never had one, had no way to fix it, and every booking needs a phone number. This adds the missing page and makes one phone rule serve sign-up, the profile page and the ride sheet.
+**Why:** "Pay in advance" has been selectable since the first shuttle migration, but nothing ever took the money — a prepay booking just sat at `payment_status = 'pending'` forever. This is the server half: a hosted checkout the passenger is sent to, and a webhook that marks the row paid. Paystack first (per #29); the provider sits behind an adapter so Stripe (#45) is one new file, not a rewrite. Nothing here is reachable from the browser — both RPCs are `service_role` only, and the amount is always read from the row, never from the request.
+## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
+branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
+
+**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
 
 ### Added
 | Item | Why |
 |---|---|
-| `/profile` page (protected): full name, mobile number, read-only email | The form resets to the stored row once it loads, so **Save changes** stays disabled until something actually differs. |
-| **Profile** link in the header — icon button on desktop, an entry in the mobile menu | The page needs a way in on a phone, where the header collapses to a sheet. |
-| `src/lib/profile.ts` — `PHONE_PATTERN`, `isValidPhone`, `profileFormSchema`, `profileChanges` | `profileChanges` returns only the fields that differ: `profiles` has an `updated_at` trigger, so an untouched Save would otherwise still write a row. |
-| 10 tests for the above (suite 29 → 39) | Pins the number formats a South African passenger actually types, and that whitespace-only edits count as no change. |
+| `bookings.payment_provider` / `.payment_ref`, same on `ride_requests`, with a unique partial index per provider | The webhook has to find exactly one row for a reference, and never guess. |
+| `start_payment(user, target_type, target_id, provider, reference)` RPC | Verifies the caller owns the row and still owes money, stores the reference, and answers with the **stored** amount, currency and email. A tampered request can only ever pay the real price of something the caller owns; "not yours" and "does not exist" give the same error. |
+| `mark_payment_paid(provider, reference, amount, currency, target_type, target_id)` RPC | Re-checks currency and amount against the row before flipping `payment_status = 'paid'`. Idempotent — providers retry, and a replay returns `already_paid` rather than an error. |
+| `to_minor_units(amount, currency)` | Providers charge integers in the smallest unit. Mirrors `toMinorUnits()` in the Edge Functions, including the zero-decimal currencies Paystack settles in (XOF, RWF). |
+| `supabase/functions/create-checkout-session` | Verifies the passenger's JWT, then calls `start_payment` as service role and returns the provider's checkout URL. Body is only `{ targetType, targetId }`. |
+| `supabase/functions/payment-webhook` | Verifies HMAC-SHA512 over the **raw** body before parsing anything, then settles. `verify_jwt = false` in `config.toml`; the signature is the authentication. |
+| `_shared/providers/` adapter (`PaymentProvider`, registry, Paystack), `_shared/money.ts`, `_shared/http.ts` | The seam for #45: callers name no provider, they read `PAYMENT_PROVIDER`. |
+| 20 tests on the portable half — minor units, registry, checkout body, signature verification, event parsing (suite now 49) | Run by the normal `npm test`; only the Deno entry points need Deno. |
+| README **Payments (Edge Functions)** section | Names the three secrets and the `supabase secrets set` / webhook-URL steps the owner still has to do. |
+| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
+| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
+| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
+| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
 
 ### Changed
 | Item | Why |
 |---|---|
-| Sign-up and the ride sheet now use `PHONE_PATTERN` / `isValidPhone` instead of their own copies of the same regex | Three places validated the same thing; the profile page would have been a fourth. |
-| Request-a-ride sheet shows the number the driver will call when the profile has one | The sheet only asks for a number when it is missing (2026-09-18), so the passenger could not see which one was on file. |
-| Header: on `/profile` neither Passenger nor Operator is highlighted in the role switch | `!isOperatorRoute` made Passenger look like the current view on any non-operator page. |
+| `bookings_guard_customer_update` and `ride_requests_guard_customer_update` now also freeze `payment_provider` / `payment_ref` | The existing guards stopped a customer setting `payment_status = 'paid'`; a customer who could point `payment_ref` at someone else's paid transaction would get there anyway. |
+| A late payment on an abandoned checkout is resolved from the transaction's own metadata, not just the reference | Start a checkout, abandon it, start another, then pay the first tab: the row no longer holds that reference. Money that arrived has to land somewhere, so `mark_payment_paid` falls back to the `target_type` / `target_id` the provider echoes back, and keeps the reference that was actually paid. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing warnings) · `npm run typecheck` clean · `npm test` 49/49 · `npm run build` OK. All 17 migrations were also applied in order to a throwaway Postgres 16 with an `auth` shim, and the RPCs exercised there: amount and currency mismatches refused, wrong owner refused, replay idempotent, metadata fallback lands, duplicate reference rejected by the index, `authenticated` denied on all three functions, and the guard triggers confirmed against a real `authenticated` role.
+
+### Not changed (deliberately)
+- **No UI.** "Pay now" on a pending prepay ride or booking is #31; blocking Complete on unpaid prepay is #32. Nothing in the app calls these functions yet.
+- Stripe is #45 — the registry has the slot and the `payment_provider` check accepts `'stripe'`, but there is no adapter.
+- No refunds, no partial payments, and no `payments` ledger table; an overpayment is accepted, an underpayment is refused.
+- Needs the owner before it can be tested end to end: `PAYSTACK_SECRET_KEY` and `PAYMENT_CALLBACK_URL` as Edge Function secrets, and the webhook URL registered in the Paystack dashboard.
+| The lat/lng inputs moved into a collapsible **Precise coordinates** section per stop, with the current pair shown on the trigger | Still there for a surveyed or pasted coordinate, no longer the primary way in. |
+| A new route starts with **no** stops instead of two prefilled at the Johannesburg default | Two pins stacked on the same default point read as one stop in the wrong place. The dialog now says "click the map to place the first one"; the existing "at least 2 named stops" check still guards Save. |
+| The map fits the existing stops once when the dialog opens (after `invalidateSize`, since the dialog is still animating when Leaflet measures) | Editing a route opens on that route. Refitting on every drag would yank the map away mid-edit. |
 
 ### Verification
 `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
 
 ### Not changed (deliberately)
-- `avatar_url` and `location` stay unedited: an avatar needs the Storage bucket from #34, and nothing in the app reads `location` yet.
-- Email is read-only — changing it is a Supabase Auth flow (re-confirmation), not a `profiles` write.
-- `BookingModal` already prefilled name / mobile / email from the profile (2026-09-18), so it is untouched here.
+- **No polyline preview** between the stops in the editor — that is #27.
+- **No stop names from the map** — reverse geocoding is #26; a clicked stop still needs a name typed.
+- Drag-and-drop reordering of the list (the issue marks it optional).
 
 ---
 
