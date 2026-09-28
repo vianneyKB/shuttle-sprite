@@ -5,6 +5,36 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-28 — #27 Route editor: live polyline preview
+branch `routine/issue-27` → `Dev` · closes #27 · no migration (UI only)
+
+**Why:** the editor map from #25 let an operator place and drag numbered pins, but the line between them existed only in the operator's head. Pickup order is the thing they get wrong, and a route that zig-zags back across town looks fine as a set of dots — you only see it as a shape. The public map already drew that shape from a route's geometry, so this extracts that one bit of rendering into a `RoutePolyline` both maps use, and draws the unsaved stop order in the dialog as a dashed draft line.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/components/map/RoutePolyline.tsx` — one component for both maps, with `active` / `muted` / `draft` variants | The issue asks for the extraction. The public map and the editor want the same line from different data; the variant is the only thing that differs. |
+| Dashed `draft` polyline in `RouteStopsMap`, redrawn as stops are added, dragged or reordered | The point of the issue: the route shape is visible before saving. Dashed so an unsaved path never reads as a surveyed road. |
+| `src/lib/routePath.ts`: `geometryPositions`, `stopPositions`, `routePositions`, `isDrawablePath` | Choosing the points to draw is a pure decision; Leaflet needs a DOM, the rule does not. Also the one place that knows GeoJSON is `[lng, lat]` and Leaflet is `[lat, lng]`. |
+| 14 tests on `routePath` (suite now 96) | Covers the swap, the geometry-vs-stops preference, and the malformed input below. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `RouteMap` renders `RoutePolyline` instead of building positions inline | Same output for every route that already drew a line; the logic now has one home. |
+| A route whose `geometry` holds fewer than two points now falls back to its stops | The old `geometry?.coordinates?.map(…) ?? stops` took an empty or single-point geometry and drew nothing, even with stops to draw. Two points is what makes a line, so that is the test. |
+| Short or non-numeric geometry positions are dropped rather than mapped | `[c[1], c[0]]` on a one-element position produced `undefined` coordinates — a point at the equator, or a broken line. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 96/96 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No road-following geometry.** The draft line is straight hops between stops; snapping to actual roads needs a routing service and is not in this issue.
+- `geometry` is still not written when a route is saved — `save_route_stops` stores stops, and the public map keeps falling back to them.
+- No distance or duration readout for the drawn path.
+
+---
+
 ## 2026-09-24 — #30 Edge Functions: Paystack checkout + webhook (provider-abstracted)
 branch `routine/issue-30` → `Dev` · closes #30 · migration `20260924041653_payment_provider_refs.sql`
 
