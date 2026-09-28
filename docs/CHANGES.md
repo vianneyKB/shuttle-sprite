@@ -5,6 +5,35 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
+branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
+
+**Why:** the security model is the part of this app that has actually broken — twice. Both times a person found it by reading the SQL. Nothing verified that a passenger cannot read another passenger's ride, or set their own price, or that an operator is confined to their own routes. These rules now run on every pull request.
+
+### Added
+| Item | Why |
+|---|---|
+| `supabase/tests/00_shim.sql` — the roles, `auth` schema, `auth.uid()`, Realtime publication and **default privileges** a Supabase project provides | Lets the real migration files run unmodified against a bare Postgres. The default privileges matter: Supabase grants the API roles broad table access and relies on RLS plus explicit `REVOKE`s, so without them the tests would exercise a stricter grant surface than production has. |
+| `supabase/tests/10_seed.sql` — two operators, two passengers, an admin, a route with stops and a fare | Users go in through `auth.users` so `handle_new_user` assigns roles exactly as a real sign-up does. Operator B exists so "not mine" is a real row, not an empty table. |
+| `supabase/tests/20_rls.sql` — **25 refusal assertions plus positive controls** | Passenger isolation (rides, profiles, the aggregated queue); cancel-only for passengers; the money columns are immutable to them; rides and bookings only through their RPCs; `create_booking` prices itself; operators scoped to their own routes, fares and requests; the dispatch state machine; fare corrections recorded and unforgeable; `has_role` does not reveal who the admins are; anonymous readers see nothing; admins see across operators. |
+| `tests.denied(stmt)` helper | Insists a statement failed **for a policy or guard reason** (42501 / P0001 / 23514 / 23505). A typo in a test raises `undefined_column` and fails loudly rather than looking like a pass — a test that passes for the wrong reason is worse than no test. |
+| `scripts/test-db.sh` and a `database` CI job on a `postgres:16` service | Applies the shim, then **every migration in filename order**, then the seed and tests. The replay is itself a test: the migration chain has to build the schema from nothing on every PR. |
+
+### Fixed
+| Item | Why |
+|---|---|
+| An operator could not correct the fare on a request nobody had confirmed yet (`20260928170000`) | **Found by these tests.** The INSERT policy on `ride_request_fare_adjustments` required `ride_requests.operator_id` to be the caller, but `dispatch_ride_request` writes that row once, at the end — so during the audit insert it is still NULL for an `awaiting` request, and the whole correction failed with "new row violates row-level security policy". That is the common case: an association increase is applied to rides that are still waiting. The policy now matches who may dispatch the request — the operator who has taken it, or the operator whose route it is. Shipped yesterday in #57; live for about a day. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 106/106 · `npm run build` OK · **`database` job green**: 17 migrations replayed from an empty database and all RLS assertions passed ([run 36447927622](https://github.com/vianneyKB/shuttle-sprite/actions/runs/36447927622)).
+
+### Not changed (deliberately)
+- **Plain plpgsql `ASSERT`, not pgTAP** as the issue title suggested. pgTAP needs an extension installed in the test database for no gain here; `ASSERT` fails with the assertion text and needs nothing. Noted so the deviation is explicit.
+- One case is asserted as a **no-op rather than a refusal**: an UPDATE whose `USING` clause hides the row changes zero rows instead of raising. That is correct Postgres behaviour and safe; the test asserts `row_count = 0` rather than pretending an error occurs.
+- Storage policies, Edge Function auth and the payment RPCs' own rules are not covered here — the Edge Functions have their own unit tests, and #40 (Playwright) covers the flows end to end.
+
+---
+
 ## 2026-09-28 — #57 Operator can correct the fare on a ride request (audited)
 branch `feat/fare-adjustments` → `Dev` · closes #57 · migration `20260928150000_ride_request_fare_adjustments.sql`
 
