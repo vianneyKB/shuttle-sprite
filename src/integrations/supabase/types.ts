@@ -67,6 +67,8 @@ export type Database = {
           is_recurring: boolean
           passengers: number
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_provider: string | null
+          payment_ref: string | null
           payment_status: string
           price_breakdown: Json
           special_requests: string | null
@@ -94,6 +96,8 @@ export type Database = {
           is_recurring?: boolean
           passengers: number
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_provider?: string | null
+          payment_ref?: string | null
           payment_status?: string
           price_breakdown?: Json
           special_requests?: string | null
@@ -121,6 +125,8 @@ export type Database = {
           is_recurring?: boolean
           passengers?: number
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_provider?: string | null
+          payment_ref?: string | null
           payment_status?: string
           price_breakdown?: Json
           special_requests?: string | null
@@ -221,6 +227,8 @@ export type Database = {
           origin_name: string
           passengers: number
           payment_method: Database["public"]["Enums"]["payment_method"]
+          payment_provider: string | null
+          payment_ref: string | null
           payment_status: string
           route_id: string | null
           scheduled_at: string | null
@@ -253,6 +261,8 @@ export type Database = {
           origin_name: string
           passengers?: number
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_provider?: string | null
+          payment_ref?: string | null
           payment_status?: string
           route_id?: string | null
           scheduled_at?: string | null
@@ -285,6 +295,8 @@ export type Database = {
           origin_name?: string
           passengers?: number
           payment_method?: Database["public"]["Enums"]["payment_method"]
+          payment_provider?: string | null
+          payment_ref?: string | null
           payment_status?: string
           route_id?: string | null
           scheduled_at?: string | null
@@ -619,6 +631,46 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      to_minor_units: {
+        Args: {
+          _amount: number
+          _currency: string
+        }
+        Returns: number
+      }
+      start_payment: {
+        Args: {
+          _user_id: string
+          _target_type: string
+          _target_id: string
+          _provider: string
+          _reference: string
+        }
+        Returns: {
+          target_type: string
+          target_id: string
+          amount: number
+          currency: string
+          customer_email: string | null
+          customer_name: string | null
+          description: string
+        }[]
+      }
+      mark_payment_paid: {
+        Args: {
+          _provider: string
+          _reference: string
+          _amount_minor?: number | null
+          _currency?: string | null
+          _target_type?: string | null
+          _target_id?: string | null
+        }
+        Returns: {
+          target_type: string
+          target_id: string
+          already_paid: boolean
+        }[]
       }
     }
     Enums: {

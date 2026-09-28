@@ -1,1 +1,9 @@
 project_id = "dyynbzbpitjoyfrxnxux"
+
+# The provider signs the raw body; there is no user JWT on a webhook.
+[functions.payment-webhook]
+verify_jwt = false
+
+# The passenger's JWT is what proves they own the booking.
+[functions.create-checkout-session]
+verify_jwt = true

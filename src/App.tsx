@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import OperatorPage from "./pages/Operator";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
+import ProfilePage from "./pages/Profile";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import { AuthProvider } from "./context/AuthContext";
@@ -33,6 +34,14 @@ const App = () => (
               element={
                 <ProtectedRoute>
                   <Index />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <ProtectedRoute>
+                  <ProfilePage />
                 </ProtectedRoute>
               }
             />

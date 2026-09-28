@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { mapBooking, type DbBooking, type DbStop } from "../useBookings";
-import { mapRoute, type DbRoute, type DbRouteStop } from "../useRoutes";
+import { buildRoutePayload, mapRoute, type DbRoute, type DbRouteStop } from "../useRoutes";
 import { mapAssignedVehicle, mapRideRequest, type DbAssignedVehicle, type DbRideRequest } from "../useRideRequests";
 import { mapVehicle, type DbVehicle } from "../useVehicles";
 
@@ -122,6 +122,31 @@ describe("mapRoute", () => {
   it("falls back to an empty LineString when geometry is missing", () => {
     const r = mapRoute({ ...route, geometry: null as unknown as GeoJSON.LineString }, []);
     expect(r.geometry).toEqual({ type: "LineString", coordinates: [] });
+  });
+
+  it("carries the active flag through, so a hidden route reads as hidden", () => {
+    expect(mapRoute(route, []).isActive).toBe(true);
+    expect(mapRoute({ ...route, is_active: false }, []).isActive).toBe(false);
+  });
+});
+
+describe("buildRoutePayload", () => {
+  const input = { name: "Airport shuttle", description: "Via CBD", operatingHours: "06:00–22:00" };
+
+  it("defaults a route to visible and maps the optional fields to null", () => {
+    const p = buildRoutePayload("o1", { name: "Airport shuttle" });
+    expect(p.operator_id).toBe("o1");
+    expect(p.is_active).toBe(true);
+    expect(p.description).toBeNull();
+    expect(p.operating_hours).toBeNull();
+    expect(p.geometry).toEqual({ type: "LineString", coordinates: [] });
+  });
+
+  it("keeps a route hidden when the caller says so", () => {
+    // The edit dialog passes the route's current flag; saving must not undo the
+    // Active switch on the card.
+    expect(buildRoutePayload("o1", { ...input, isActive: false }).is_active).toBe(false);
+    expect(buildRoutePayload("o1", { ...input, isActive: true }).is_active).toBe(true);
   });
 });
 

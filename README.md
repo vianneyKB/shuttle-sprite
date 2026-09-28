@@ -8,7 +8,7 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 |------|------------|
 | **Passenger** | Interactive route map (Leaflet), ride requests between stops, fleet booking, **My rides** (requests + bookings) |
 | **Passenger** | Payment choice: **cash on board** or **pay in advance** |
-| **Operator** | Route CRUD with ordered stops (LineString geometry) |
+| **Operator** | Route CRUD with ordered stops (LineString geometry); stop names prefilled from OpenStreetMap (Nominatim reverse geocoding) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
@@ -39,12 +39,15 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 |----------|-------------|
 | `VITE_SUPABASE_URL` | Supabase project URL |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key |
+| `VITE_NOMINATIM_EMAIL` | Optional. Contact address sent with each reverse-geocode lookup, as the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) asks |
+| `VITE_NOMINATIM_URL` | Optional. Own Nominatim reverse endpoint; defaults to `https://nominatim.openstreetmap.org/reverse` |
 
 ## Routes
 
 | Path | Role | Description |
 |------|------|-------------|
 | `/` | Authenticated | Passenger home (map, fleet, my rides) |
+| `/profile` | Authenticated | Your name and mobile number |
 | `/operator` | Operator or admin | Operator dashboard |
 | `/vendor` | — | Redirects to `/operator` |
 | `/auth` | Public | Sign in / sign up |
@@ -61,7 +64,48 @@ src/
     operator/     RouteManagement, PassengerQueue, dashboard
   hooks/          useRoutes, useRideRequests, useBookings, useVehicles
 supabase/migrations/
+supabase/functions/
+  _shared/        provider adapter, minor-unit conversion, HTTP helpers
+  create-checkout-session/
+  payment-webhook/
 ```
+
+## Payments (Edge Functions)
+
+Prepay bookings and ride requests are paid on a provider-hosted checkout page.
+**Paystack** is the only adapter today; Stripe drops into
+`supabase/functions/_shared/providers/` without changing either function.
+
+| Function | Auth | What it does |
+|----------|------|--------------|
+| `create-checkout-session` | Passenger JWT | Verifies the caller owns the booking / ride request and still owes money, reads the amount **from the database**, and returns the provider's checkout URL. |
+| `payment-webhook` | Provider signature (`verify_jwt = false`) | Verifies HMAC over the raw body, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
+
+The client never sends an amount: it posts `{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+
+### Deploy and configure
+
+```sh
+supabase functions deploy create-checkout-session
+supabase functions deploy payment-webhook
+
+supabase secrets set PAYSTACK_SECRET_KEY=sk_test_xxx
+supabase secrets set PAYMENT_CALLBACK_URL=https://<user>.github.io/shuttle-sprite/
+# optional; defaults to paystack
+supabase secrets set PAYMENT_PROVIDER=paystack
+```
+
+Then add the webhook URL in the Paystack dashboard (**Settings → API Keys &
+Webhooks**): `https://<project-ref>.functions.supabase.co/payment-webhook`.
+
+| Secret | Where | Description |
+|--------|-------|-------------|
+| `PAYSTACK_SECRET_KEY` | Supabase Edge Function secret | Signs API calls and verifies webhook signatures. Use a `sk_test_` key until go-live. |
+| `PAYMENT_CALLBACK_URL` | Supabase Edge Function secret | Where the provider returns the passenger after paying. Server-side only, so a caller cannot redirect elsewhere. |
+| `PAYMENT_PROVIDER` | Supabase Edge Function secret (optional) | Which adapter to use; `paystack` by default. |
+
+`SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
+by the platform — do not set them yourself.
 
 ## Scripts
 
