@@ -1,7 +1,8 @@
 import React, { useMemo, useState } from "react";
-import { MapContainer, TileLayer, Polyline, Marker, Popup, useMap } from "react-leaflet";
+import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "@/lib/leaflet";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/leaflet";
+import { RoutePolyline } from "@/components/map/RoutePolyline";
 import type { RouteStop, ShuttleRoute } from "@/types";
 import { Input } from "@/components/ui/input";
 import { Loader2 } from "lucide-react";
@@ -77,22 +78,14 @@ export const RouteMap: React.FC<RouteMapProps> = ({
           />
           {filtered.length > 0 && <FitBounds routes={filtered} />}
           {filtered.map((route) => {
-            const positions =
-              route.geometry?.coordinates?.map((c) => [c[1], c[0]] as [number, number]) ??
-              route.stops.map((s) => [s.lat, s.lng] as [number, number]);
             const active = !selectedRouteId || selectedRouteId === route.id;
             return (
               <React.Fragment key={route.id}>
-                {positions.length >= 2 && (
-                  <Polyline
-                    positions={positions}
-                    pathOptions={{
-                      color: active ? "#3b6fd4" : "#94a3b8",
-                      weight: active ? 5 : 3,
-                      opacity: active ? 0.9 : 0.5,
-                    }}
-                  />
-                )}
+                <RoutePolyline
+                  geometry={route.geometry}
+                  stops={route.stops}
+                  variant={active ? "active" : "muted"}
+                />
                 {route.stops.map((stop) => (
                   <Marker key={stop.id} position={[stop.lat, stop.lng]}>
                     <Popup>

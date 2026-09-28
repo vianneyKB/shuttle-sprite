@@ -4,6 +4,7 @@ import L from "leaflet";
 import "@/lib/leaflet";
 import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/leaflet";
 import { normalizePoint, stopBounds } from "@/lib/routeStops";
+import { RoutePolyline } from "@/components/map/RoutePolyline";
 
 export type EditableStop = {
   key: string;
@@ -90,6 +91,8 @@ export const RouteStopsMap: React.FC<RouteStopsMapProps> = ({
       />
       <FitOnOpen stops={stops} />
       <AddStopOnClick onAdd={onAdd} />
+      {/* Draft shape: redraws as stops are added, dragged or reordered. */}
+      <RoutePolyline stops={stops} variant="draft" />
       {stops.map((stop, idx) => (
         <Marker
           key={stop.key}
