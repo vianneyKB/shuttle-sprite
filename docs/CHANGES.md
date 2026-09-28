@@ -5,6 +5,35 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-28 — #57 Operator can correct the fare on a ride request (audited)
+branch `feat/fare-adjustments` → `Dev` · closes #57 · migration `20260928150000_ride_request_fare_adjustments.sql`
+
+**Why:** fares are quoted and snapshotted when a request is created (#56), which is right — but operations need a correction path: an association increase that landed this morning, a discount, a mistake. What they must not have is a silent edit, because the passenger was shown a price. Every correction is now recorded, attributable and visible to the passenger.
+
+### Added
+| Item | Why |
+|---|---|
+| `ride_request_fare_adjustments` — old/new fare per seat, old/new total, currency, who, when, reason (3–500 chars) | Append-only: there is a SELECT and an INSERT policy and deliberately no UPDATE or DELETE, so the history cannot be rewritten. The passenger sees corrections to their own ride; the operator sees the ones on requests they already see. |
+| `dispatch_ride_request` gains `_fare_per_seat` and `_fare_reason` | The fare moves through the same function as every other operator action, so the same ownership and "taken by another operator" checks apply. Recomputes subtotal and tax from the request's own snapshotted rate and currency, honouring the operator's tax-inclusive setting. Refused once the ride is completed, cancelled, **or paid for**, and refused without a reason. |
+| **Adjust fare** on each queue row → dialog with a live preview of the new total, the reason field, and the correction history | The operator sees the exact number the database will store before committing to it. |
+| **Fare adjusted** note on the passenger's ride card: old total struck through, new total, and the reason | The passenger was quoted a price; they are told when and why it changed. |
+| `src/lib/fareAdjust.ts` — `previewFare`, `canAdjustFare`, `fareChangeError` (+10 tests, suite 86 → 96) | The arithmetic mirrors the SQL exactly, so the preview and the stored amount cannot disagree; the validation messages match the RPC's errors for the same reason. |
+
+### Fixed
+| Item | Why |
+|---|---|
+| `ride_requests_guard_customer_update` now also freezes `fare_per_seat`, `subtotal`, `tax_rate`, `tax_amount`, `total_price`, `currency` and the stop ids | **Security.** The guard was written in September before fares existed, so it froze payment and ownership columns but not the money ones — and the customer UPDATE policy lets a passenger edit their own request while it is `awaiting`. Since #56 that meant a passenger could set their own `total_price` to 0. Found while adding the correction path. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 96/96 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No refund path.** A ride already paid for cannot be re-priced at all; that needs the payments work (#31/#32) and a provider refund call.
+- The INSERT policy lets an operator write an audit row for their own request, so a determined operator could log a misleading old value. Closing that means moving the write into a `SECURITY DEFINER` helper, which would cost the RLS gating `dispatch_ride_request` currently gets for free. The record exists to inform the passenger and the platform, not to defend against the operator who already sets the price.
+- No notification beyond the card and the existing Realtime refresh — a push/SMS on a fare change belongs with #37.
+
+---
+
 ## 2026-09-28 — Repair: change-log entries lost and interleaved by branch merges
 
 **Why:** five routine branches each inserted their entry at the top of this file. Git merged those inserts by interleaving one pair and dropping three outright, so the log — the thing that is meant to explain what changed — was the least reliable document in the repo.

@@ -159,6 +159,19 @@ export interface AssignedVehicle {
   capacity: number;
 }
 
+export interface RideFareAdjustment {
+  id: string;
+  rideRequestId: string;
+  changedBy?: string;
+  changedAt: Date;
+  oldFarePerSeat?: number;
+  newFarePerSeat: number;
+  oldTotal?: number;
+  newTotal: number;
+  currency: string;
+  reason: string;
+}
+
 export interface RouteFare {
   id: string;
   routeId: string;

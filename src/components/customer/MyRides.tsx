@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, MapPin, Loader2, Bus } from "lucide-react";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/money";
+import { FareAdjustedNote } from "./FareAdjustedNote";
 
 const Row = ({ children, className }: { children: React.ReactNode; className?: string }) => (
   <p className={className}>{children}</p>
@@ -92,6 +93,7 @@ export const MyRides: React.FC = () => {
                     ? ` · ${formatMoney(r.totalPrice, r.currency)}`
                     : " · fare payable on board"}
                 </p>
+                <FareAdjustedNote request={r} />
 
                   <RideTimeline request={r} />
 
