@@ -5,14 +5,57 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-09-28 — Repair: change-log entries lost and interleaved by branch merges
+
+**Why:** five routine branches each inserted their entry at the top of this file. Git merged those inserts by interleaving one pair and dropping three outright, so the log — the thing that is meant to explain what changed — was the least reliable document in the repo.
+
+### Fixed
+| Item | Why |
+|---|---|
+| #30 and #25 de-interleaved into two entries | Their headings, tables and verification lines had been spliced together: #30's Added rows sat under #25's heading, and #25's Changed rows sat under #30's "Not changed" list. Recovered by line range from the tangled block; no wording invented. |
+| #33, #26 and #28 entries restored | They were absent entirely. Recovered verbatim from the diffs of commits `a2803c6`, `5dfd275` and `9323f59`. |
+| All five re-ordered newest-first with one `---` between them | Matches the rest of the file. |
+
+### Not changed (deliberately)
+- No code, tests or migrations touched — documentation only.
+- The routine's prompt is being amended separately so new entries are appended at a fixed anchor instead of racing for the top of the file.
+
+---
+
+## 2026-09-25 — #33 Profile page (display name, phone)
+branch `routine/issue-33` → `Dev` · closes #33 · no migration (the columns and `profiles_update` RLS already exist)
+
+**Why:** `profiles` has held `display_name` and `phone` since the first migration, but nothing in the app could edit them — a passenger whose number changed, or who signed in with Google and never had one, had no way to fix it, and every booking needs a phone number. This adds the missing page and makes one phone rule serve sign-up, the profile page and the ride sheet.
+
+### Added
+| Item | Why |
+|---|---|
+| `/profile` page (protected): full name, mobile number, read-only email | The form resets to the stored row once it loads, so **Save changes** stays disabled until something actually differs. |
+| **Profile** link in the header — icon button on desktop, an entry in the mobile menu | The page needs a way in on a phone, where the header collapses to a sheet. |
+| `src/lib/profile.ts` — `PHONE_PATTERN`, `isValidPhone`, `profileFormSchema`, `profileChanges` | `profileChanges` returns only the fields that differ: `profiles` has an `updated_at` trigger, so an untouched Save would otherwise still write a row. |
+| 10 tests for the above (suite 29 → 39) | Pins the number formats a South African passenger actually types, and that whitespace-only edits count as no change. |
+
+### Changed
+| Item | Why |
+|---|---|
+| Sign-up and the ride sheet now use `PHONE_PATTERN` / `isValidPhone` instead of their own copies of the same regex | Three places validated the same thing; the profile page would have been a fourth. |
+| Request-a-ride sheet shows the number the driver will call when the profile has one | The sheet only asks for a number when it is missing (2026-09-18), so the passenger could not see which one was on file. |
+| Header: on `/profile` neither Passenger nor Operator is highlighted in the role switch | `!isOperatorRoute` made Passenger look like the current view on any non-operator page. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 39/39 · `npm run build` OK.
+
+### Not changed (deliberately)
+- `avatar_url` and `location` stay unedited: an avatar needs the Storage bucket from #34, and nothing in the app reads `location` yet.
+- Email is read-only — changing it is a Supabase Auth flow (re-confirmation), not a `profiles` write.
+- `BookingModal` already prefilled name / mobile / email from the profile (2026-09-18), so it is untouched here.
+
+---
+
 ## 2026-09-24 — #30 Edge Functions: Paystack checkout + webhook (provider-abstracted)
 branch `routine/issue-30` → `Dev` · closes #30 · migration `20260924041653_payment_provider_refs.sql`
 
 **Why:** "Pay in advance" has been selectable since the first shuttle migration, but nothing ever took the money — a prepay booking just sat at `payment_status = 'pending'` forever. This is the server half: a hosted checkout the passenger is sent to, and a webhook that marks the row paid. Paystack first (per #29); the provider sits behind an adapter so Stripe (#45) is one new file, not a rewrite. Nothing here is reachable from the browser — both RPCs are `service_role` only, and the amount is always read from the row, never from the request.
-## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
-branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
-
-**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
 
 ### Added
 | Item | Why |
@@ -26,10 +69,6 @@ branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stop
 | `_shared/providers/` adapter (`PaymentProvider`, registry, Paystack), `_shared/money.ts`, `_shared/http.ts` | The seam for #45: callers name no provider, they read `PAYMENT_PROVIDER`. |
 | 20 tests on the portable half — minor units, registry, checkout body, signature verification, event parsing (suite now 49) | Run by the normal `npm test`; only the Deno entry points need Deno. |
 | README **Payments (Edge Functions)** section | Names the three secrets and the `supabase secrets set` / webhook-URL steps the owner still has to do. |
-| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
-| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
-| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
-| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
 
 ### Changed
 | Item | Why |
@@ -45,6 +84,82 @@ branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stop
 - Stripe is #45 — the registry has the slot and the `payment_provider` check accepts `'stripe'`, but there is no adapter.
 - No refunds, no partial payments, and no `payments` ledger table; an overpayment is accepted, an underpayment is refused.
 - Needs the owner before it can be tested end to end: `PAYSTACK_SECRET_KEY` and `PAYMENT_CALLBACK_URL` as Edge Function secrets, and the webhook URL registered in the Paystack dashboard.
+
+---
+
+## 2026-09-23 — #28 Toggle is_active from the route card
+branch `routine/issue-28` → `Dev` · closes #28 · no migration
+
+**Why:** every route an operator created went straight onto the passenger map and could only be taken off it by deleting it — losing its stops and its fare history. A route is seasonal, suspended or still being built more often than it is permanently gone, so the card now carries the `is_active` flag the schema and `useShuttleRoutes` already respect.
+
+### Added
+| Item | Why |
+|---|---|
+| **Active / Inactive** switch on each route card, with an `Inactive` badge and "hidden from the passenger map" on the stop line | The flag existed in the database from day one with no way to reach it. The wording says what the switch does rather than naming the column. |
+| `useSetRouteActive` — writes `is_active` alone | Leaves the stops and the RPC-rebuilt LineString untouched; the existing `shuttle_routes_update` RLS policy already limits an operator to their own routes, so no new SQL. |
+| `buildRoutePayload(operatorId, input)` extracted from `useUpsertRoute`, plus 3 tests (suite 29 → 32) | The default-visible rule and the flag's round trip are now pure and tested. |
+
+### Changed
+| Item | Why |
+|---|---|
+| The edit dialog sends the route's current `isActive` | `useUpsertRoute` defaults the flag to `true`, so saving an edit to a hidden route used to put it back on the map. Mirrors how `VehicleManagement` passes `available`. |
+| Only the switch being saved is disabled while the write is in flight (`setActive.variables?.id`) | One slow request shouldn't freeze the toggle on every other card. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 32/32 · `npm run build` OK.
+
+### Not changed (deliberately)
+- No confirmation step when hiding a route with rides already booked on it — worth a look once dispatch settles, but nothing is cancelled by the switch.
+- #27 (polyline preview in the route editor) is still open: it needs the editor map from #25, which is unmerged in PR #65.
+
+---
+
+## 2026-09-22 — #26 Reverse-geocode stop names (Nominatim)
+branch `routine/issue-26` → `Dev` · closes #26 · no migration
+
+**Why:** an operator building a route had to type every stop name by hand next to a pair of coordinates. Once a stop has a position, OpenStreetMap already knows what is there — prefill the name and let the operator correct it. Nominatim is free but rate-limited (1 req/s) and asks callers to identify themselves, so the cap belongs in one place in the app, not in each caller.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/lib/geocode.ts`: `buildReverseUrl`, `stopNameFromReverse`, `reverseGeocode`, `roundCoord`, `isValidLatLng` | One serial queue holds the **whole app** to 1 request/second, whatever the UI does. `stopNameFromReverse` picks a stop-sized name (`name`/amenity/building/road, qualified by suburb or town) and returns `""` when nothing is usable, so a blank answer never overwrites a real name. Coordinates round to ~1 m for a stable cache key. |
+| `useReverseGeocode(coords, enabled)` hook | 800 ms debounce (dragging or typing a coordinate makes one request), TanStack Query cache per rounded coordinate, `retry: false`. |
+| Route editor: name prefilled once a stop is positioned, plus a **Name from map** button and a "Finding a name…" hint | Auto-fill only when the operator hasn't typed a name; the button re-looks-up on demand and overwrites. Typing in the name field stops auto-fill for that stop. |
+| `VITE_NOMINATIM_EMAIL` / `VITE_NOMINATIM_URL` (both optional), typed in `vite-env.d.ts` and documented in `.env.example` + README | The policy wants a contact address; the URL lets a busier deployment point at its own instance. |
+| 14 tests in `src/lib/__tests__/geocode.test.ts` (suite now 43) | URL shape, name mapping and fallbacks, and that a second lookup cannot leave inside the 1 s window. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `RouteManagement`: stop rows extracted into a `StopFields` child; parent exposes stable `patchStop` / `removeStop` callbacks | A stop row now owns a hook, so it has to be a component. Stable callbacks keep the auto-fill effect from re-running on every keystroke. Lat/lng/name inputs gained `aria-label`s. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 43/43 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **Nothing blocks on geocoding.** A failed or empty lookup is silent; the name field is plain text and Save is unaffected.
+- `User-Agent` and `Referer` cannot be set from browser `fetch` (forbidden header names). The browser sends `Referer` itself, which identifies the deployment; `VITE_NOMINATIM_EMAIL` adds the contact address.
+- Forward search ("type a place, drop a pin") is not part of this issue.
+- Clicking the map to place a stop is #25 (open in PR #65); this works off whatever sets a stop's coordinates, so it applies there too once merged.
+
+---
+
+## 2026-09-21 — #25 Route editor: click-to-add and drag-to-move stops on the map
+branch `routine/issue-25` → `Dev` · closes #25 · no migration (UI only; stops still save through `save_route_stops`)
+
+**Why:** creating a route meant typing raw decimal degrees into two number boxes per stop. Nobody knows their taxi rank's latitude, so operators were pasting coordinates out of another map app, one stop at a time, with no way to see whether the result was in the right order — or the right city. The map the passengers already look at is the natural place to draw the route.
+
+### Added
+| Item | Why |
+|---|---|
+| `RouteStopsMap` in the route dialog: click the map to append a stop, drag a pin to move it (`dragend` writes back lat/lng) | Placing a stop is now pointing at it. Same OSM tiles and `@/lib/leaflet` setup as the public map. |
+| Numbered, draggable pins; the selected stop's pin and list card are highlighted together | Pickup order is the thing an operator gets wrong; the number on the pin shows it on the map, not just in the list. |
+| Up / down buttons per stop, and a delete on every stop | Reordering was impossible before — the only fix was retyping the coordinates. Drag-and-drop reordering deliberately left out (up/down works on a phone). |
+| `src/lib/routeStops.ts` (+9 tests, suite now 39): `moveStop`, `clampLat`, `wrapLng`, `toCoord`, `normalizePoint`, `nextStopSeed`, `stopBounds`, `formatCoord` | The ordering and coordinate rules are pure, so they are tested without a DOM. `clampLat`/`wrapLng` keep a pin dragged past a pole or the date line on the map; `toCoord` keeps the previous value when the number input is cleared (it used to become `0`, i.e. the Gulf of Guinea). |
+
+### Changed
+| Item | Why |
+|---|---|
 | The lat/lng inputs moved into a collapsible **Precise coordinates** section per stop, with the current pair shown on the trigger | Still there for a surveyed or pasted coordinate, no longer the primary way in. |
 | A new route starts with **no** stops instead of two prefilled at the Johannesburg default | Two pins stacked on the same default point read as one stop in the wrong place. The dialog now says "click the map to place the first one"; the existing "at least 2 named stops" check still guards Save. |
 | The map fits the existing stops once when the dialog opens (after `invalidateSize`, since the dialog is still animating when Leaflet measures) | Editing a route opens on that route. Refitting on every drag would yank the map away mid-edit. |
