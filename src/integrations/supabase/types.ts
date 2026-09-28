@@ -213,6 +213,53 @@ export type Database = {
         }
         Relationships: []
       }
+      ride_request_fare_adjustments: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          currency: string
+          id: string
+          new_fare_per_seat: number
+          new_total: number
+          old_fare_per_seat: number | null
+          old_total: number | null
+          reason: string
+          ride_request_id: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          currency: string
+          id?: string
+          new_fare_per_seat: number
+          new_total: number
+          old_fare_per_seat?: number | null
+          old_total?: number | null
+          reason: string
+          ride_request_id: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          currency?: string
+          id?: string
+          new_fare_per_seat?: number
+          new_total?: number
+          old_fare_per_seat?: number | null
+          old_total?: number | null
+          reason?: string
+          ride_request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ride_request_fare_adjustments_ride_request_id_fkey"
+            columns: ["ride_request_id"]
+            isOneToOne: false
+            referencedRelation: "ride_requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ride_requests: {
         Row: {
           created_at: string
@@ -606,6 +653,8 @@ export type Database = {
           _id: string
           _status?: Database["public"]["Enums"]["ride_request_status"] | null
           _vehicle_id?: string | null
+          _fare_per_seat?: number | null
+          _fare_reason?: string | null
         }
         Returns: Database["public"]["Tables"]["ride_requests"]["Row"]
       }

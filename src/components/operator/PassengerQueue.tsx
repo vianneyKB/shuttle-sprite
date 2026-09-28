@@ -7,10 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Users, MapPin, ArrowRight, Loader2, ChevronDown, ChevronUp, Bus, Play, Check, X, Clock } from "lucide-react";
+import { Users, MapPin, ArrowRight, Loader2, ChevronDown, ChevronUp, Bus, Play, Check, X, Clock, Coins } from "lucide-react";
 import { toast } from "sonner";
 import { formatScheduled } from "@/lib/schedule";
 import { formatMoney } from "@/lib/money";
+import { canAdjustFare } from "@/lib/fareAdjust";
+import { FareAdjustDialog } from "./FareAdjustDialog";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -73,6 +75,7 @@ const RequestRow: React.FC<{
   onDispatch: (input: DispatchInput, successMsg: string) => void;
 }> = ({ request: r, vehicles, busy, onDispatch }) => {
   const vehicle = vehicles.find((v) => v.id === r.vehicleId);
+  const [fareOpen, setFareOpen] = useState(false);
   return (
     <li className="flex flex-col gap-3 py-3 border-t first:border-t-0 border-secondary-100">
       <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm">
@@ -139,7 +142,25 @@ const RequestRow: React.FC<{
             <X className="w-4 h-4 mr-1" /> Cancel
           </Button>
         )}
+        {canAdjustFare(r.status, r.paymentStatus) && (
+          <Button size="sm" variant="outline" disabled={busy} onClick={() => setFareOpen(true)}>
+            <Coins className="w-4 h-4 mr-1" /> Adjust fare
+          </Button>
+        )}
       </p>
+
+      {fareOpen && (
+        <FareAdjustDialog
+          request={r}
+          open
+          onOpenChange={setFareOpen}
+          busy={busy}
+          onSubmit={(farePerSeat, reason) => {
+            onDispatch({ id: r.id, farePerSeat, fareReason: reason }, "Fare updated");
+            setFareOpen(false);
+          }}
+        />
+      )}
     </li>
   );
 };
