@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { AssignedVehicle, PassengerQueueGroup, PaymentMethod, RideRequest, RideRequestStatus } from "@/types";
+import type { AssignedVehicle, PassengerQueueGroup, PaymentMethod, RideFareAdjustment, RideRequest, RideRequestStatus } from "@/types";
 
 export type DbRideRequest = {
   id: string;
@@ -193,9 +193,52 @@ export const useCreateRideRequest = () => {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ride_requests"] });
       qc.invalidateQueries({ queryKey: ["passenger_queue"] });
+      qc.invalidateQueries({ queryKey: ["fare_adjustments"] });
     },
   });
 };
+
+type DbFareAdjustment = {
+  id: string;
+  ride_request_id: string;
+  changed_by: string | null;
+  changed_at: string;
+  old_fare_per_seat: number | null;
+  new_fare_per_seat: number;
+  old_total: number | null;
+  new_total: number;
+  currency: string;
+  reason: string;
+};
+
+export const mapFareAdjustment = (a: DbFareAdjustment): RideFareAdjustment => ({
+  id: a.id,
+  rideRequestId: a.ride_request_id,
+  changedBy: a.changed_by ?? undefined,
+  changedAt: new Date(a.changed_at),
+  oldFarePerSeat: a.old_fare_per_seat == null ? undefined : Number(a.old_fare_per_seat),
+  newFarePerSeat: Number(a.new_fare_per_seat),
+  oldTotal: a.old_total == null ? undefined : Number(a.old_total),
+  newTotal: Number(a.new_total),
+  currency: a.currency,
+  reason: a.reason,
+});
+
+/** Fare corrections on one request, newest first. RLS shows these to the passenger and the operator. */
+export const useFareAdjustments = (rideRequestId: string | undefined) =>
+  useQuery({
+    queryKey: ["fare_adjustments", rideRequestId],
+    enabled: !!rideRequestId,
+    queryFn: async (): Promise<RideFareAdjustment[]> => {
+      const { data, error } = await supabase
+        .from("ride_request_fare_adjustments")
+        .select("*")
+        .eq("ride_request_id", rideRequestId!)
+        .order("changed_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as unknown as DbFareAdjustment[]).map(mapFareAdjustment);
+    },
+  });
 
 export const useCancelRideRequest = () => {
   const qc = useQueryClient();
@@ -216,6 +259,9 @@ export const useCancelRideRequest = () => {
 
 export type DispatchInput = {
   id: string;
+  /** New per-seat fare; requires `fareReason`. Refused once paid, completed or cancelled. */
+  farePerSeat?: number;
+  fareReason?: string;
   /** New status; omit to only (re)assign a vehicle. */
   status?: RideRequestStatus;
   /** Vehicle from the operator's own fleet; omit to leave unchanged. */
@@ -226,11 +272,13 @@ export type DispatchInput = {
 export const useDispatchRideRequest = () => {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, status, vehicleId }: DispatchInput): Promise<RideRequest> => {
+    mutationFn: async ({ id, status, vehicleId, farePerSeat, fareReason }: DispatchInput): Promise<RideRequest> => {
       const { data, error } = await supabase.rpc("dispatch_ride_request", {
         _id: id,
         _status: status ?? null,
         _vehicle_id: vehicleId ?? null,
+        _fare_per_seat: farePerSeat ?? null,
+        _fare_reason: fareReason ?? null,
       });
       if (error) throw error;
       return mapRideRequest(data as unknown as DbRideRequest);
