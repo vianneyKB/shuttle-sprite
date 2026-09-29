@@ -7,9 +7,14 @@ import { VehicleList } from "./VehicleList";
 import { MyRides } from "./MyRides";
 import { BookingModal } from "./BookingModal";
 import { useAppContext } from "@/context/AppContext";
+import { usePaymentReturn } from "@/hooks/usePayments";
 
 export const CustomerView: React.FC = () => {
   const { state } = useAppContext();
+  // A passenger coming back from a checkout page is told what happened and
+  // lands on the ride the payment belongs to, not on the map.
+  const payment = usePaymentReturn();
+  const [tab, setTab] = React.useState(payment.isReturn ? "rides" : "map");
 
   return (
     <section className="space-y-6 sm:space-y-8">
@@ -22,7 +27,7 @@ export const CustomerView: React.FC = () => {
         </p>
       </header>
 
-      <Tabs defaultValue="map" className="w-full">
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6 h-auto min-h-11">
           <TabsTrigger value="map" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <Map className="w-4 h-4" /> Routes
