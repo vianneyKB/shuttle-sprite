@@ -13,6 +13,7 @@ import { formatScheduled } from "@/lib/schedule";
 import { formatMoney } from "@/lib/money";
 import { canAdjustFare } from "@/lib/fareAdjust";
 import { FareAdjustDialog } from "./FareAdjustDialog";
+import { CompleteRideButton } from "./CompleteRideButton";
 
 /* ------------------------------------------------------------------ */
 /* Helpers                                                             */
@@ -126,9 +127,14 @@ const RequestRow: React.FC<{
           </Button>
         )}
         {r.status === "in_progress" && (
-          <Button size="sm" disabled={busy} onClick={() => onDispatch({ id: r.id, status: "completed" }, "Ride completed")}>
-            <Check className="w-4 h-4 mr-1" /> Complete
-          </Button>
+          <CompleteRideButton
+            paymentMethod={r.paymentMethod}
+            paymentStatus={r.paymentStatus}
+            amount={r.totalPrice}
+            currency={r.currency}
+            busy={busy}
+            onComplete={() => onDispatch({ id: r.id, status: "completed" }, "Ride completed")}
+          />
         )}
         {(r.status === "awaiting" || r.status === "confirmed" || r.status === "in_progress") && (
           <Button

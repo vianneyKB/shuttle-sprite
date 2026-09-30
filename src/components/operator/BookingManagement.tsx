@@ -9,6 +9,7 @@ import { Calendar, Clock, Users, MapPin, Phone, Mail, Car, DollarSign, Loader2 }
 import type { Booking } from "@/types";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/money";
+import { CompleteRideButton } from "./CompleteRideButton";
 
 export const BookingManagement: React.FC = () => {
   const { data: bookings = [], isLoading } = useOperatorBookings();
@@ -85,7 +86,15 @@ export const BookingManagement: React.FC = () => {
             )}
             {booking.status === "confirmed" && (
               <>
-                <Button size="sm" onClick={() => update(booking.id, "completed")}>Complete</Button>
+                <CompleteRideButton
+                  paymentMethod={booking.paymentMethod}
+                  paymentStatus={booking.paymentStatus}
+                  amount={booking.totalPrice}
+                  currency={booking.currency}
+                  noun="booking"
+                  busy={updateStatus.isPending}
+                  onComplete={() => update(booking.id, "completed")}
+                />
                 <Button variant="outline" size="sm" onClick={() => update(booking.id, "cancelled")}>Cancel</Button>
               </>
             )}
