@@ -11,6 +11,7 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | **Operator** | Route CRUD with ordered stops (LineString geometry); stop names prefilled from OpenStreetMap (Nominatim reverse geocoding) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
+| **Operator** | **Complete settles the fare** — a prepay ride or booking cannot be completed while unpaid; completing a cash one records the fare as collected |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
 | **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
 
@@ -82,6 +83,11 @@ Prepay bookings and ride requests are paid on a provider-hosted checkout page.
 | `payment-webhook` | Provider signature (`verify_jwt = false`) | Verifies HMAC over the raw body, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
 
 The client never sends an amount: it posts `{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+
+Cash is settled on board instead: completing a cash ride or booking sets
+`payment_status = 'paid'`. Completing a **prepay** row while it is still unpaid
+is refused by `settle_payment_on_complete()` on both tables, so neither the
+dispatch RPC nor a raw `UPDATE` can close a fare nobody paid.
 
 ### Deploy and configure
 
