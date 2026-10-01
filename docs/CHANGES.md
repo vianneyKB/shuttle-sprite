@@ -5,6 +5,41 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-10-01 — #45 Stripe payment adapter (second provider)
+branch `routine/issue-45` → `Dev` · closes #45 · migration `20261001041100_operator_payment_provider.sql`
+
+**Why:** #30 built the provider seam and filled one side of it, with the choice of provider sitting in a platform-wide Edge Function secret. That was fine with one adapter and wrong with two: an operator in Johannesburg settles through Paystack and one in Lisbon through Stripe, on the same deployment, so the choice belongs to the operator and therefore to the database. Stripe now has an adapter, each operator picks theirs on the Pricing tab, and `start_payment()` resolves it from the operator who owns the vehicle or the route — the passenger neither chooses a provider nor can name one.
+
+### Added
+| Item | Why |
+|---|---|
+| `_shared/providers/stripe.ts` — Checkout Session creation, `stripe-signature` verification, `checkout.session.completed` / `.async_payment_succeeded` → paid | Stripe's API is form-encoded with an inline one-line price in minor units, and its webhooks are signed with a **separate** endpoint secret as HMAC-SHA256 over `"<timestamp>.<body>"`. Both differences stay inside the adapter; neither function changed shape. The timestamp is inside the signature and checked against a 5-minute window, so a captured body cannot be replayed later. |
+| `operator_settings.payment_provider` (`paystack` \| `stripe`, default `paystack`) + `operator_payment_provider()` helper | The provider is per operator, not per deployment. The helper never returns null: an operator with no settings row falls back to the platform default, so an existing checkout cannot break by omission. |
+| **Card payments taken by** select on the operator Pricing tab, with a one-line note per provider | The operator who carries the settlement relationship is the one who should be choosing, and they need to see which it is without reading an env var. |
+| `_shared/crypto.ts` — `hexHmac`, `equalsConstantTime` | Both adapters need a hex HMAC and a constant-time compare; two copies of a signature check is how one of them quietly stops being constant-time. |
+| `apiKeyEnv`, `webhookSecretEnv` and `signatureHeader` on `PaymentProvider` | The functions were building `"${name.toUpperCase()}_SECRET_KEY"` out of a provider name, which cannot express Stripe's two separate secrets. A provider now declares what it needs. |
+| 28 tests across the Stripe body, signature and event paths, plus `mapOperatorSettings` (suite 106 → 134) | The signature window, the rolled-secret case and the unpaid-but-completed session are exactly the cases that are invisible until money is involved. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `start_payment()` returns a new `provider` column and treats its `_provider` argument as a fallback only | The provider is now resolved in Postgres from the row's operator — the same place the amount comes from — so neither the browser nor an env var decides who takes the card. Return type changed, so the function is dropped and recreated; arguments, grants, ownership and amount checks are unchanged. |
+| `create-checkout-session` picks its adapter from what `start_payment()` returned, after the RPC rather than before | It cannot know the operator until the RPC has resolved the row, so provider selection moves below it. A provider with no API key configured is a 500 naming the missing secret, never a silent swap to the other one. |
+| `payment-webhook` attributes the call by signature header, falling back to `PAYMENT_PROVIDER` | One URL serves both providers. Claiming to be Stripe buys nothing: the header only chooses whose secret the HMAC is checked against, and that check is what authenticates the call. A verification that throws (a missing secret) is now a 500 rather than an unhandled rejection. |
+| `paystack.ts` uses the shared HMAC helpers | Same behaviour, one implementation. |
+| README payments section: both adapters, the per-operator setting, Stripe's two secrets and which events to subscribe | Someone deploying this needs to know that `STRIPE_WEBHOOK_SECRET` is not the API key, and that both dashboards point at the same URL. |
+
+### Verification
+`npm ci --legacy-peer-deps` clean · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 134/134 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No refunds and no Stripe-side cancellation.** `mark_payment_paid()` is still the only write; a refund needs a provider call and an audit trail of its own.
+- **No per-operator API keys.** Both providers' keys are still platform Edge Function secrets, so an operator choosing Stripe settles into the platform's Stripe account, not their own. Per-operator credentials (Stripe Connect, Paystack subaccounts) is a separate piece of work and a separate compliance conversation.
+- **Passengers still cannot choose.** Card-vs-cash stays the passenger's choice; which card processor is the operator's.
+- An operator who switches provider while a passenger has an unfinished checkout open leaves that reference with the old provider on the row. The webhook still settles it: it is attributed by its own signature header and found by its own reference.
+
+---
+
 ## 2026-09-28 — #57 Operator can correct the fare on a ride request (audited)
 branch `feat/fare-adjustments` → `Dev` · closes #57 · migration `20260928150000_ride_request_fare_adjustments.sql`
 
