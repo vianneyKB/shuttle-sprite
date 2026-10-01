@@ -1,6 +1,8 @@
 
 export type PaymentMethod = 'cash' | 'prepay';
 export type PaymentStatus = 'not_required' | 'pending' | 'paid';
+/** Hosted checkouts the Edge Functions have an adapter for. */
+export type PaymentProvider = 'paystack' | 'stripe';
 export type RideRequestStatus = 'awaiting' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface Vehicle {
@@ -87,6 +89,8 @@ export interface OperatorSettings {
   taxLabel: string;
   pricesIncludeTax: boolean;
   additionalStopFee: number;
+  /** Who takes this operator's card payments. */
+  paymentProvider: PaymentProvider;
 }
 
 export interface RouteStop {

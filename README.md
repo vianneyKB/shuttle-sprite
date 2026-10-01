@@ -13,6 +13,7 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | **Operator** | Fleet management, booking workflow, dashboard stats |
 | **Operator** | **Complete settles the fare** — a prepay ride or booking cannot be completed while unpaid; completing a cash one records the fare as collected |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
+| **Operator** | **Payment provider** — Paystack or Stripe, per operator; passengers are sent to whichever checkout their operator settles with |
 | **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
 
 ## Tech stack
@@ -74,15 +75,30 @@ supabase/functions/
 ## Payments (Edge Functions)
 
 Prepay bookings and ride requests are paid on a provider-hosted checkout page.
-**Paystack** is the only adapter today; Stripe drops into
-`supabase/functions/_shared/providers/` without changing either function.
+**Paystack** and **Stripe** both have adapters in
+`supabase/functions/_shared/providers/`; a third drops in there without
+changing either function.
 
 | Function | Auth | What it does |
 |----------|------|--------------|
-| `create-checkout-session` | Passenger JWT | Verifies the caller owns the booking / ride request and still owes money, reads the amount **from the database**, and returns the provider's checkout URL. |
-| `payment-webhook` | Provider signature (`verify_jwt = false`) | Verifies HMAC over the raw body, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
+| `create-checkout-session` | Passenger JWT | Verifies the caller owns the booking / ride request and still owes money, reads the amount **and the provider** from the database, and returns that provider's checkout URL. |
+| `payment-webhook` | Provider signature (`verify_jwt = false`) | Attributes the call by its signature header, verifies the HMAC over the raw body against that provider's secret, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
 
-The client never sends an amount: it posts `{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+The client never sends an amount, and never names a provider: it posts
+`{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+
+### Who takes the card
+
+Each operator picks their own checkout on the operator **Pricing** tab, stored
+as `operator_settings.payment_provider`. `start_payment()`
+resolves it from the operator who owns the vehicle (bookings) or the route
+(ride requests), so one deployment can serve a Paystack operator in
+Johannesburg and a Stripe operator in Lisbon. `PAYMENT_PROVIDER` is only the
+fallback for an operator with no settings row.
+
+Both webhooks use the one `payment-webhook` URL: Paystack signs with
+`x-paystack-signature` and Stripe with `stripe-signature`, which is how the
+function knows whose secret to verify against.
 
 **Pay now** appears on **My rides** for any prepay ride or booking still marked
 `pending` with an amount owing. It calls `create-checkout-session` and sends the
@@ -103,20 +119,33 @@ dispatch RPC nor a raw `UPDATE` can close a fare nobody paid.
 supabase functions deploy create-checkout-session
 supabase functions deploy payment-webhook
 
+# Paystack operators
 supabase secrets set PAYSTACK_SECRET_KEY=sk_test_xxx
+# Stripe operators
+supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+
 supabase secrets set PAYMENT_CALLBACK_URL=https://<user>.github.io/shuttle-sprite/
-# optional; defaults to paystack
+# optional; the fallback for an operator with no settings row
 supabase secrets set PAYMENT_PROVIDER=paystack
 ```
 
-Then add the webhook URL in the Paystack dashboard (**Settings → API Keys &
-Webhooks**): `https://<project-ref>.functions.supabase.co/payment-webhook`.
+Set only the secrets for the providers your operators actually use: a provider
+with no key is refused at checkout and never silently swapped.
+
+Then register the same URL —
+`https://<project-ref>.functions.supabase.co/payment-webhook` — in each
+dashboard you use: Paystack under **Settings → API Keys & Webhooks**, Stripe
+under **Developers → Webhooks**, subscribed to
+`checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 
 | Secret | Where | Description |
 |--------|-------|-------------|
 | `PAYSTACK_SECRET_KEY` | Supabase Edge Function secret | Signs API calls and verifies webhook signatures. Use a `sk_test_` key until go-live. |
+| `STRIPE_SECRET_KEY` | Supabase Edge Function secret | Creates Checkout Sessions. `sk_test_…` until go-live. |
+| `STRIPE_WEBHOOK_SECRET` | Supabase Edge Function secret | The endpoint signing secret (`whsec_…`) Stripe shows when you add the webhook. Separate from the API key, and required for Stripe webhooks to be accepted. |
 | `PAYMENT_CALLBACK_URL` | Supabase Edge Function secret | Where the provider returns the passenger after paying. Server-side only, so a caller cannot redirect elsewhere. |
-| `PAYMENT_PROVIDER` | Supabase Edge Function secret (optional) | Which adapter to use; `paystack` by default. |
+| `PAYMENT_PROVIDER` | Supabase Edge Function secret (optional) | Fallback provider for an operator with no settings row; `paystack` by default. |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
 by the platform — do not set them yourself.

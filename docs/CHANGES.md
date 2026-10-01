@@ -17,6 +17,10 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
 
 **Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
+## 2026-10-01 — #45 Stripe payment adapter (second provider)
+branch `routine/issue-45` → `Dev` · closes #45 · migration `20261001041100_operator_payment_provider.sql`
+
+**Why:** #30 built the provider seam and filled one side of it, with the choice of provider sitting in a platform-wide Edge Function secret. That was fine with one adapter and wrong with two: an operator in Johannesburg settles through Paystack and one in Lisbon through Stripe, on the same deployment, so the choice belongs to the operator and therefore to the database. Stripe now has an adapter, each operator picks theirs on the Pricing tab, and `start_payment()` resolves it from the operator who owns the vehicle or the route — the passenger neither chooses a provider nor can name one.
 
 ### Added
 | Item | Why |
@@ -47,6 +51,12 @@ branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_b
 | `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
 | `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
 | `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
+| `_shared/providers/stripe.ts` — Checkout Session creation, `stripe-signature` verification, `checkout.session.completed` / `.async_payment_succeeded` → paid | Stripe's API is form-encoded with an inline one-line price in minor units, and its webhooks are signed with a **separate** endpoint secret as HMAC-SHA256 over `"<timestamp>.<body>"`. Both differences stay inside the adapter; neither function changed shape. The timestamp is inside the signature and checked against a 5-minute window, so a captured body cannot be replayed later. |
+| `operator_settings.payment_provider` (`paystack` \| `stripe`, default `paystack`) + `operator_payment_provider()` helper | The provider is per operator, not per deployment. The helper never returns null: an operator with no settings row falls back to the platform default, so an existing checkout cannot break by omission. |
+| **Card payments taken by** select on the operator Pricing tab, with a one-line note per provider | The operator who carries the settlement relationship is the one who should be choosing, and they need to see which it is without reading an env var. |
+| `_shared/crypto.ts` — `hexHmac`, `equalsConstantTime` | Both adapters need a hex HMAC and a constant-time compare; two copies of a signature check is how one of them quietly stops being constant-time. |
+| `apiKeyEnv`, `webhookSecretEnv` and `signatureHeader` on `PaymentProvider` | The functions were building `"${name.toUpperCase()}_SECRET_KEY"` out of a provider name, which cannot express Stripe's two separate secrets. A provider now declares what it needs. |
+| 28 tests across the Stripe body, signature and event paths, plus `mapOperatorSettings` (suite 106 → 134) | The signature window, the rolled-secret case and the unpaid-but-completed session are exactly the cases that are invisible until money is involved. |
 
 ### Changed
 | Item | Why |
@@ -78,6 +88,20 @@ Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shi
 - **A prepay row that is `not_required` is treated as unpaid, not waived.** On a prepay row that value is a data fault; reading it as a waiver would turn the fault into a free ride.
 - **No operator-side "mark prepay as paid".** Letting an operator declare a provider payment received is exactly the hole this closes. The passenger's own way to pay is #31.
 - **No `Complete` for a prepay booking whose passenger never pays.** The operator's only exit is Cancel. A partial-settlement or write-off path is a real gap but it is an owner decision, not this issue.
+| `start_payment()` returns a new `provider` column and treats its `_provider` argument as a fallback only | The provider is now resolved in Postgres from the row's operator — the same place the amount comes from — so neither the browser nor an env var decides who takes the card. Return type changed, so the function is dropped and recreated; arguments, grants, ownership and amount checks are unchanged. |
+| `create-checkout-session` picks its adapter from what `start_payment()` returned, after the RPC rather than before | It cannot know the operator until the RPC has resolved the row, so provider selection moves below it. A provider with no API key configured is a 500 naming the missing secret, never a silent swap to the other one. |
+| `payment-webhook` attributes the call by signature header, falling back to `PAYMENT_PROVIDER` | One URL serves both providers. Claiming to be Stripe buys nothing: the header only chooses whose secret the HMAC is checked against, and that check is what authenticates the call. A verification that throws (a missing secret) is now a 500 rather than an unhandled rejection. |
+| `paystack.ts` uses the shared HMAC helpers | Same behaviour, one implementation. |
+| README payments section: both adapters, the per-operator setting, Stripe's two secrets and which events to subscribe | Someone deploying this needs to know that `STRIPE_WEBHOOK_SECRET` is not the API key, and that both dashboards point at the same URL. |
+
+### Verification
+`npm ci --legacy-peer-deps` clean · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 134/134 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No refunds and no Stripe-side cancellation.** `mark_payment_paid()` is still the only write; a refund needs a provider call and an audit trail of its own.
+- **No per-operator API keys.** Both providers' keys are still platform Edge Function secrets, so an operator choosing Stripe settles into the platform's Stripe account, not their own. Per-operator credentials (Stripe Connect, Paystack subaccounts) is a separate piece of work and a separate compliance conversation.
+- **Passengers still cannot choose.** Card-vs-cash stays the passenger's choice; which card processor is the operator's.
+- An operator who switches provider while a passenger has an unfinished checkout open leaves that reference with the old provider on the row. The webhook still settles it: it is attributed by its own signature header and found by its own reference.
 
 ---
 
