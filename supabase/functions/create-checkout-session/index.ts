@@ -5,10 +5,12 @@
  * Body: { "targetType": "booking" | "ride_request", "targetId": "<uuid>" }
  * Auth: the passenger's Supabase JWT (Authorization: Bearer …).
  *
- * The caller says *what* to pay for, never *how much*. We verify the JWT,
- * hand the resolved user id to start_payment(), and that RPC answers with the
- * amount stored on the row — so a tampered request can only ever pay the real
- * price of something the caller actually owns.
+ * The caller says *what* to pay for, never *how much* and never *to whom*.
+ * We verify the JWT, hand the resolved user id to start_payment(), and that
+ * RPC answers with the amount stored on the row and the provider configured
+ * for the operator who owns it — so a tampered request can only ever pay the
+ * real price of something the caller actually owns, through the checkout that
+ * operator settles with.
  *
  * Returns: { url, reference, provider }
  */
@@ -28,6 +30,8 @@ type StartPaymentRow = {
   customer_email: string | null;
   customer_name: string | null;
   description: string;
+  /** Resolved from operator_settings.payment_provider; never from the client. */
+  provider: string;
 };
 
 Deno.serve(async (req: Request) => {
@@ -37,23 +41,12 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
-  const providerName = Deno.env.get("PAYMENT_PROVIDER") ?? DEFAULT_PROVIDER;
+  // Only the fallback now, for an operator who has saved no settings.
+  const fallbackProvider = Deno.env.get("PAYMENT_PROVIDER") ?? DEFAULT_PROVIDER;
   const callbackUrl = Deno.env.get("PAYMENT_CALLBACK_URL") ?? null;
 
   if (!supabaseUrl || !anonKey || !serviceKey) {
     return fail("Payments are not configured on this project", 500);
-  }
-
-  let provider;
-  let secretKey: string;
-  try {
-    provider = getProvider(providerName);
-    secretKey = Deno.env.get(`${provider.name.toUpperCase()}_SECRET_KEY`) ?? "";
-  } catch (error) {
-    return fail(messageOf(error), 500);
-  }
-  if (!secretKey) {
-    return fail(`${provider.name.toUpperCase()}_SECRET_KEY is not set`, 500);
   }
 
   // --- who is asking -------------------------------------------------------
@@ -89,7 +82,7 @@ Deno.serve(async (req: Request) => {
     _user_id: userData.user.id,
     _target_type: targetType,
     _target_id: targetId,
-    _provider: provider.name,
+    _provider: fallbackProvider,
     _reference: reference,
   });
   if (error) return fail(error.message, 400);
@@ -99,6 +92,20 @@ Deno.serve(async (req: Request) => {
 
   const email = payable.customer_email ?? userData.user.email ?? "";
   if (!email) return fail("Add an email address to your profile before paying", 400);
+
+  // --- which checkout does this operator settle with ----------------------
+  let provider;
+  let secretKey: string;
+  try {
+    provider = getProvider(payable.provider);
+    secretKey = Deno.env.get(provider.apiKeyEnv) ?? "";
+  } catch (error) {
+    console.error("no adapter for the configured provider", { provider: payable.provider, error });
+    return fail(messageOf(error), 500);
+  }
+  if (!secretKey) {
+    return fail(`${provider.apiKeyEnv} is not set`, 500);
+  }
 
   // --- hand off to the provider -------------------------------------------
   try {

@@ -2,6 +2,11 @@ import { describe, expect, it } from "vitest";
 import { mapBooking, type DbBooking, type DbStop } from "../useBookings";
 import { buildRoutePayload, mapRoute, type DbRoute, type DbRouteStop } from "../useRoutes";
 import { mapAssignedVehicle, mapRideRequest, type DbAssignedVehicle, type DbRideRequest } from "../useRideRequests";
+import {
+  defaultOperatorSettings,
+  mapOperatorSettings,
+  type DbOperatorSettings,
+} from "../useOperatorSettings";
 import { mapVehicle, type DbVehicle } from "../useVehicles";
 
 // Postgres numeric columns arrive from PostgREST as strings; the mappers must coerce them.
@@ -264,5 +269,51 @@ describe("mapVehicle", () => {
     expect(v.features).toEqual([]);
     expect(v.image).toBe("");
     expect(v.operatorName).toBe("Operator");
+  });
+});
+
+describe("mapOperatorSettings", () => {
+  const row: DbOperatorSettings = {
+    operator_id: "o1",
+    currency: "KES",
+    tax_rate: num("16.00"),
+    tax_label: "VAT",
+    prices_include_tax: true,
+    additional_stop_fee: num("20.00"),
+    payment_provider: "stripe",
+  };
+
+  it("coerces the numerics and carries the provider through", () => {
+    expect(mapOperatorSettings(row)).toEqual({
+      operatorId: "o1",
+      currency: "KES",
+      taxRate: 16,
+      taxLabel: "VAT",
+      pricesIncludeTax: true,
+      additionalStopFee: 20,
+      paymentProvider: "stripe",
+    });
+  });
+
+  it("falls back to Paystack for a row written before the column existed", () => {
+    expect(mapOperatorSettings({ ...row, payment_provider: null })).toMatchObject({
+      paymentProvider: "paystack",
+    });
+    // A provider this build has no adapter for must not reach the Edge Function.
+    expect(mapOperatorSettings({ ...row, payment_provider: "worldpay" })).toMatchObject({
+      paymentProvider: "paystack",
+    });
+  });
+
+  it("matches the database defaults until the operator saves", () => {
+    expect(defaultOperatorSettings("o1")).toEqual({
+      operatorId: "o1",
+      currency: "ZAR",
+      taxRate: 15,
+      taxLabel: "VAT",
+      pricesIncludeTax: false,
+      additionalStopFee: 15,
+      paymentProvider: "paystack",
+    });
   });
 });
