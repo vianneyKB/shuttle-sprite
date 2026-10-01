@@ -5,22 +5,110 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
-## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
-branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
-
-**Why:** the security model is the part of this app that has actually broken — twice. Both times a person found it by reading the SQL. Nothing verified that a passenger cannot read another passenger's ride, or set their own price, or that an operator is confined to their own routes. These rules now run on every pull request.
-## 2026-09-29 — #31 Passenger: "Pay now" for pending prepay rides and bookings
-branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and both Edge Functions landed with #30)
-
-**Why:** the server half of prepay has been finished since #30 — `create-checkout-session` reads the amount from the row, `payment-webhook` flips `payment_status` — but a passenger who chose **pay in advance** had no way to reach it. The ride sat `prepay · pending` forever. This is the passenger's half: a **Pay now** button on anything that still owes money, and honest handling of the page they land back on. The client still never names a price; it posts only what it wants to pay for.
-## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
-branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
-
-**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
 ## 2026-10-01 — #45 Stripe payment adapter (second provider)
 branch `routine/issue-45` → `Dev` · closes #45 · migration `20261001041100_operator_payment_provider.sql`
 
 **Why:** #30 built the provider seam and filled one side of it, with the choice of provider sitting in a platform-wide Edge Function secret. That was fine with one adapter and wrong with two: an operator in Johannesburg settles through Paystack and one in Lisbon through Stripe, on the same deployment, so the choice belongs to the operator and therefore to the database. Stripe now has an adapter, each operator picks theirs on the Pricing tab, and `start_payment()` resolves it from the operator who owns the vehicle or the route — the passenger neither chooses a provider nor can name one.
+
+### Added
+| Item | Why |
+|---|---|
+| `_shared/providers/stripe.ts` — Checkout Session creation, `stripe-signature` verification, `checkout.session.completed` / `.async_payment_succeeded` → paid | Stripe's API is form-encoded with an inline one-line price in minor units, and its webhooks are signed with a **separate** endpoint secret as HMAC-SHA256 over `"<timestamp>.<body>"`. Both differences stay inside the adapter; neither function changed shape. The timestamp is inside the signature and checked against a 5-minute window, so a captured body cannot be replayed later. |
+| `operator_settings.payment_provider` (`paystack` \| `stripe`, default `paystack`) + `operator_payment_provider()` helper | The provider is per operator, not per deployment. The helper never returns null: an operator with no settings row falls back to the platform default, so an existing checkout cannot break by omission. |
+| **Card payments taken by** select on the operator Pricing tab, with a one-line note per provider | The operator who carries the settlement relationship is the one who should be choosing, and they need to see which it is without reading an env var. |
+| `_shared/crypto.ts` — `hexHmac`, `equalsConstantTime` | Both adapters need a hex HMAC and a constant-time compare; two copies of a signature check is how one of them quietly stops being constant-time. |
+| `apiKeyEnv`, `webhookSecretEnv` and `signatureHeader` on `PaymentProvider` | The functions were building `"${name.toUpperCase()}_SECRET_KEY"` out of a provider name, which cannot express Stripe's two separate secrets. A provider now declares what it needs. |
+| 28 tests across the Stripe body, signature and event paths, plus `mapOperatorSettings` (suite 106 → 134) | The signature window, the rolled-secret case and the unpaid-but-completed session are exactly the cases that are invisible until money is involved. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `start_payment()` returns a new `provider` column and treats its `_provider` argument as a fallback only | The provider is now resolved in Postgres from the row's operator — the same place the amount comes from — so neither the browser nor an env var decides who takes the card. Return type changed, so the function is dropped and recreated; arguments, grants, ownership and amount checks are unchanged. |
+| `create-checkout-session` picks its adapter from what `start_payment()` returned, after the RPC rather than before | It cannot know the operator until the RPC has resolved the row, so provider selection moves below it. A provider with no API key configured is a 500 naming the missing secret, never a silent swap to the other one. |
+| `payment-webhook` attributes the call by signature header, falling back to `PAYMENT_PROVIDER` | One URL serves both providers. Claiming to be Stripe buys nothing: the header only chooses whose secret the HMAC is checked against, and that check is what authenticates the call. A verification that throws (a missing secret) is now a 500 rather than an unhandled rejection. |
+| `paystack.ts` uses the shared HMAC helpers | Same behaviour, one implementation. |
+| README payments section: both adapters, the per-operator setting, Stripe's two secrets and which events to subscribe | Someone deploying this needs to know that `STRIPE_WEBHOOK_SECRET` is not the API key, and that both dashboards point at the same URL. |
+
+### Verification
+`npm ci --legacy-peer-deps` clean · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 134/134 · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No refunds and no Stripe-side cancellation.** `mark_payment_paid()` is still the only write; a refund needs a provider call and an audit trail of its own.
+- **No per-operator API keys.** Both providers' keys are still platform Edge Function secrets, so an operator choosing Stripe settles into the platform's Stripe account, not their own. Per-operator credentials (Stripe Connect, Paystack subaccounts) is a separate piece of work and a separate compliance conversation.
+- **Passengers still cannot choose.** Card-vs-cash stays the passenger's choice; which card processor is the operator's.
+- An operator who switches provider while a passenger has an unfinished checkout open leaves that reference with the old provider on the row. The webhook still settles it: it is attributed by its own signature header and found by its own reference.
+
+---
+
+## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
+branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
+
+**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
+
+### Added
+| Item | Why |
+|---|---|
+| `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
+| `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
+| `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `PassengerQueue` and `BookingManagement` **Complete** buttons → `CompleteRideButton` | Both surfaces had a bare Complete that fired immediately. Bookings had no payment gating of any kind. |
+| `README.md` — feature-table row, and a paragraph under **Payments** | The two rules are now part of what the platform promises, and the paragraph says which function enforces them. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 120/120 (12 files) · `npm run build` OK.
+
+Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shim, then asserted the behaviour directly: an unpaid prepay booking and an unpaid prepay ride are both refused (through a raw `UPDATE` *and* through `dispatch_ride_request`); the same rows complete once paid; completing a cash booking and a cash ride sets `payment_status = 'paid'`; cancelling an unpaid prepay row still works and leaves `payment_status` alone; and re-saving a completed row is a no-op for both rules. Eight assertions, all passed. The scratch cluster was local only — no migration, shim or script is committed here, since CI's `database` job is #41's work.
+
+### Not changed (deliberately)
+- **No `types.ts` change.** The trigger function is revoked from `anon`/`authenticated` and exposes no new table, column or RPC, so the hand-written types are already correct.
+- **Admins and `service_role` are not exempt.** The money either arrived or it did not, and neither role can make it arrive by asking. To close an unpaid prepay row: cancel it, or mark the payment paid first — which for a real payment is the webhook's job.
+- **A prepay row that is `not_required` is treated as unpaid, not waived.** On a prepay row that value is a data fault; reading it as a waiver would turn the fault into a free ride.
+- **No operator-side "mark prepay as paid".** Letting an operator declare a provider payment received is exactly the hole this closes. The passenger's own way to pay is #31.
+- **No `Complete` for a prepay booking whose passenger never pays.** The operator's only exit is Cancel. A partial-settlement or write-off path is a real gap but it is an owner decision, not this issue.
+
+---
+
+## 2026-09-29 — #31 Passenger: "Pay now" for pending prepay rides and bookings
+branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and both Edge Functions landed with #30)
+
+**Why:** the server half of prepay has been finished since #30 — `create-checkout-session` reads the amount from the row, `payment-webhook` flips `payment_status` — but a passenger who chose **pay in advance** had no way to reach it. The ride sat `prepay · pending` forever. This is the passenger's half: a **Pay now** button on anything that still owes money, and honest handling of the page they land back on. The client still never names a price; it posts only what it wants to pay for.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/lib/payments.ts` — `canPayNow`, `payNowLabel`, `readPaymentReturn`, `stripPaymentReturn`, `paymentReturnMessage`, `checkoutErrorMessage` (+13 tests, suite 106 → 119) | `canPayNow` mirrors `start_payment()`'s refusals exactly — prepay, `pending`, an amount above zero, not cancelled — so the button is never shown for something the RPC would reject. The return URL is parsed here, not in a component, because providers disagree about its shape (Paystack sends `reference` *and* `trxref`). |
+| `src/hooks/usePayments.ts` — `useStartCheckout`, `usePaymentByReference`, `usePaymentReturn` | `useStartCheckout` posts `{ targetType, targetId }` and nothing else; the amount and the provider stay server-side. `usePaymentByReference` resolves a reference against the passenger's **own** rows (RLS, plus an explicit `customer_id` filter) and re-checks five times over ~12 s, because the webhook can land after the redirect. |
+| `PayNowButton` on every unpaid prepay ride and fleet booking in **My rides** | The label carries the amount (`formatMoney`, the row's own currency) so the passenger sees the figure before leaving the app, and the spinner stays up through the redirect. A failure surfaces the Edge Function's own message ("This booking is already paid"), not an HTTP code. |
+| Return-URL handling in `CustomerView`: toast, tab switch to **My rides**, refetch | The passenger comes back to the ride they just paid for rather than the map. Paid → success toast and both lists refetch. |
+| README: **Pay now** in the feature table, and what `PAYMENT_CALLBACK_URL` has to point at | The callback must land on the passenger home page, because that is where the reference is read. Getting it wrong is silent otherwise. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
+| The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
+| The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
+
+### Verification
+`npm ci --legacy-peer-deps` · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 119/119 (12 files) · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No SQL, and no `types.ts` edit.** No new table, column or function: `start_payment`, `mark_payment_paid` and the provider-reference columns all exist from #30, and the hand-written types already cover them.
+- **The provider is still chosen server-side** from the `PAYMENT_PROVIDER` secret, not per operator. The issue's comment suggests reading `payment_provider` from `operator_settings`, but that column does not exist and adding it is the per-operator-provider decision in #29 (owner's call, plus #45 for the second adapter). The Edge Function echoes `provider` back, so a per-operator choice later changes no client code.
+- **A cancelled checkout and a webhook still in flight are reported the same way**, because the browser genuinely cannot tell them apart: Paystack returns the passenger to the same URL either way, and verifying the transaction means a server call. The message is true of both and invites another attempt. An explicit `?payment=cancelled` is honoured for a future adapter that sends one.
+- **No "Pay now" on a prepay ride with no fare yet** (`total_price` null — the route had no fare configured). The RPC refuses it and tells them to pay the driver, which the card already says.
+- **No receipt, and no refund.** Both belong with #32 and a provider refund call.
+
+---
+
+## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
+branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
+
+**Why:** the security model is the part of this app that has actually broken — twice. Both times a person found it by reading the SQL. Nothing verified that a passenger cannot read another passenger's ride, or set their own price, or that an operator is confined to their own routes. These rules now run on every pull request.
 
 ### Added
 | Item | Why |
@@ -43,65 +131,6 @@ branch `routine/issue-45` → `Dev` · closes #45 · migration `20261001041100_o
 - **Plain plpgsql `ASSERT`, not pgTAP** as the issue title suggested. pgTAP needs an extension installed in the test database for no gain here; `ASSERT` fails with the assertion text and needs nothing. Noted so the deviation is explicit.
 - One case is asserted as a **no-op rather than a refusal**: an UPDATE whose `USING` clause hides the row changes zero rows instead of raising. That is correct Postgres behaviour and safe; the test asserts `row_count = 0` rather than pretending an error occurs.
 - Storage policies, Edge Function auth and the payment RPCs' own rules are not covered here — the Edge Functions have their own unit tests, and #40 (Playwright) covers the flows end to end.
-| `src/lib/payments.ts` — `canPayNow`, `payNowLabel`, `readPaymentReturn`, `stripPaymentReturn`, `paymentReturnMessage`, `checkoutErrorMessage` (+13 tests, suite 106 → 119) | `canPayNow` mirrors `start_payment()`'s refusals exactly — prepay, `pending`, an amount above zero, not cancelled — so the button is never shown for something the RPC would reject. The return URL is parsed here, not in a component, because providers disagree about its shape (Paystack sends `reference` *and* `trxref`). |
-| `src/hooks/usePayments.ts` — `useStartCheckout`, `usePaymentByReference`, `usePaymentReturn` | `useStartCheckout` posts `{ targetType, targetId }` and nothing else; the amount and the provider stay server-side. `usePaymentByReference` resolves a reference against the passenger's **own** rows (RLS, plus an explicit `customer_id` filter) and re-checks five times over ~12 s, because the webhook can land after the redirect. |
-| `PayNowButton` on every unpaid prepay ride and fleet booking in **My rides** | The label carries the amount (`formatMoney`, the row's own currency) so the passenger sees the figure before leaving the app, and the spinner stays up through the redirect. A failure surfaces the Edge Function's own message ("This booking is already paid"), not an HTTP code. |
-| Return-URL handling in `CustomerView`: toast, tab switch to **My rides**, refetch | The passenger comes back to the ride they just paid for rather than the map. Paid → success toast and both lists refetch. |
-| README: **Pay now** in the feature table, and what `PAYMENT_CALLBACK_URL` has to point at | The callback must land on the passenger home page, because that is where the reference is read. Getting it wrong is silent otherwise. |
-| `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
-| `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
-| `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
-| `_shared/providers/stripe.ts` — Checkout Session creation, `stripe-signature` verification, `checkout.session.completed` / `.async_payment_succeeded` → paid | Stripe's API is form-encoded with an inline one-line price in minor units, and its webhooks are signed with a **separate** endpoint secret as HMAC-SHA256 over `"<timestamp>.<body>"`. Both differences stay inside the adapter; neither function changed shape. The timestamp is inside the signature and checked against a 5-minute window, so a captured body cannot be replayed later. |
-| `operator_settings.payment_provider` (`paystack` \| `stripe`, default `paystack`) + `operator_payment_provider()` helper | The provider is per operator, not per deployment. The helper never returns null: an operator with no settings row falls back to the platform default, so an existing checkout cannot break by omission. |
-| **Card payments taken by** select on the operator Pricing tab, with a one-line note per provider | The operator who carries the settlement relationship is the one who should be choosing, and they need to see which it is without reading an env var. |
-| `_shared/crypto.ts` — `hexHmac`, `equalsConstantTime` | Both adapters need a hex HMAC and a constant-time compare; two copies of a signature check is how one of them quietly stops being constant-time. |
-| `apiKeyEnv`, `webhookSecretEnv` and `signatureHeader` on `PaymentProvider` | The functions were building `"${name.toUpperCase()}_SECRET_KEY"` out of a provider name, which cannot express Stripe's two separate secrets. A provider now declares what it needs. |
-| 28 tests across the Stripe body, signature and event paths, plus `mapOperatorSettings` (suite 106 → 134) | The signature window, the rolled-secret case and the unpaid-but-completed session are exactly the cases that are invisible until money is involved. |
-
-### Changed
-| Item | Why |
-|---|---|
-| `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
-| The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
-| The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
-
-### Verification
-`npm ci --legacy-peer-deps` · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 119/119 (12 files) · `npm run build` OK.
-
-### Not changed (deliberately)
-- **No SQL, and no `types.ts` edit.** No new table, column or function: `start_payment`, `mark_payment_paid` and the provider-reference columns all exist from #30, and the hand-written types already cover them.
-- **The provider is still chosen server-side** from the `PAYMENT_PROVIDER` secret, not per operator. The issue's comment suggests reading `payment_provider` from `operator_settings`, but that column does not exist and adding it is the per-operator-provider decision in #29 (owner's call, plus #45 for the second adapter). The Edge Function echoes `provider` back, so a per-operator choice later changes no client code.
-- **A cancelled checkout and a webhook still in flight are reported the same way**, because the browser genuinely cannot tell them apart: Paystack returns the passenger to the same URL either way, and verifying the transaction means a server call. The message is true of both and invites another attempt. An explicit `?payment=cancelled` is honoured for a future adapter that sends one.
-- **No "Pay now" on a prepay ride with no fare yet** (`total_price` null — the route had no fare configured). The RPC refuses it and tells them to pay the driver, which the card already says.
-- **No receipt, and no refund.** Both belong with #32 and a provider refund call.
-| `PassengerQueue` and `BookingManagement` **Complete** buttons → `CompleteRideButton` | Both surfaces had a bare Complete that fired immediately. Bookings had no payment gating of any kind. |
-| `README.md` — feature-table row, and a paragraph under **Payments** | The two rules are now part of what the platform promises, and the paragraph says which function enforces them. |
-
-### Verification
-`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 120/120 (12 files) · `npm run build` OK.
-
-Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shim, then asserted the behaviour directly: an unpaid prepay booking and an unpaid prepay ride are both refused (through a raw `UPDATE` *and* through `dispatch_ride_request`); the same rows complete once paid; completing a cash booking and a cash ride sets `payment_status = 'paid'`; cancelling an unpaid prepay row still works and leaves `payment_status` alone; and re-saving a completed row is a no-op for both rules. Eight assertions, all passed. The scratch cluster was local only — no migration, shim or script is committed here, since CI's `database` job is #41's work.
-
-### Not changed (deliberately)
-- **No `types.ts` change.** The trigger function is revoked from `anon`/`authenticated` and exposes no new table, column or RPC, so the hand-written types are already correct.
-- **Admins and `service_role` are not exempt.** The money either arrived or it did not, and neither role can make it arrive by asking. To close an unpaid prepay row: cancel it, or mark the payment paid first — which for a real payment is the webhook's job.
-- **A prepay row that is `not_required` is treated as unpaid, not waived.** On a prepay row that value is a data fault; reading it as a waiver would turn the fault into a free ride.
-- **No operator-side "mark prepay as paid".** Letting an operator declare a provider payment received is exactly the hole this closes. The passenger's own way to pay is #31.
-- **No `Complete` for a prepay booking whose passenger never pays.** The operator's only exit is Cancel. A partial-settlement or write-off path is a real gap but it is an owner decision, not this issue.
-| `start_payment()` returns a new `provider` column and treats its `_provider` argument as a fallback only | The provider is now resolved in Postgres from the row's operator — the same place the amount comes from — so neither the browser nor an env var decides who takes the card. Return type changed, so the function is dropped and recreated; arguments, grants, ownership and amount checks are unchanged. |
-| `create-checkout-session` picks its adapter from what `start_payment()` returned, after the RPC rather than before | It cannot know the operator until the RPC has resolved the row, so provider selection moves below it. A provider with no API key configured is a 500 naming the missing secret, never a silent swap to the other one. |
-| `payment-webhook` attributes the call by signature header, falling back to `PAYMENT_PROVIDER` | One URL serves both providers. Claiming to be Stripe buys nothing: the header only chooses whose secret the HMAC is checked against, and that check is what authenticates the call. A verification that throws (a missing secret) is now a 500 rather than an unhandled rejection. |
-| `paystack.ts` uses the shared HMAC helpers | Same behaviour, one implementation. |
-| README payments section: both adapters, the per-operator setting, Stripe's two secrets and which events to subscribe | Someone deploying this needs to know that `STRIPE_WEBHOOK_SECRET` is not the API key, and that both dashboards point at the same URL. |
-
-### Verification
-`npm ci --legacy-peer-deps` clean · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 134/134 · `npm run build` OK.
-
-### Not changed (deliberately)
-- **No refunds and no Stripe-side cancellation.** `mark_payment_paid()` is still the only write; a refund needs a provider call and an audit trail of its own.
-- **No per-operator API keys.** Both providers' keys are still platform Edge Function secrets, so an operator choosing Stripe settles into the platform's Stripe account, not their own. Per-operator credentials (Stripe Connect, Paystack subaccounts) is a separate piece of work and a separate compliance conversation.
-- **Passengers still cannot choose.** Card-vs-cash stays the passenger's choice; which card processor is the operator's.
-- An operator who switches provider while a passenger has an unfinished checkout open leaves that reference with the old provider on the row. The webhook still settles it: it is attributed by its own signature header and found by its own reference.
 
 ---
 
