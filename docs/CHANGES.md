@@ -13,6 +13,10 @@ branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_
 branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and both Edge Functions landed with #30)
 
 **Why:** the server half of prepay has been finished since #30 — `create-checkout-session` reads the amount from the row, `payment-webhook` flips `payment_status` — but a passenger who chose **pay in advance** had no way to reach it. The ride sat `prepay · pending` forever. This is the passenger's half: a **Pay now** button on anything that still owes money, and honest handling of the page they land back on. The client still never names a price; it posts only what it wants to pay for.
+## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
+branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
+
+**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
 
 ### Added
 | Item | Why |
@@ -40,6 +44,9 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 | `PayNowButton` on every unpaid prepay ride and fleet booking in **My rides** | The label carries the amount (`formatMoney`, the row's own currency) so the passenger sees the figure before leaving the app, and the spinner stays up through the redirect. A failure surfaces the Edge Function's own message ("This booking is already paid"), not an HTTP code. |
 | Return-URL handling in `CustomerView`: toast, tab switch to **My rides**, refetch | The passenger comes back to the ride they just paid for rather than the map. Paid → success toast and both lists refetch. |
 | README: **Pay now** in the feature table, and what `PAYMENT_CALLBACK_URL` has to point at | The callback must land on the passenger home page, because that is where the reference is read. Getting it wrong is silent otherwise. |
+| `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
+| `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
+| `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
 
 ### Changed
 | Item | Why |
@@ -57,6 +64,20 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 - **A cancelled checkout and a webhook still in flight are reported the same way**, because the browser genuinely cannot tell them apart: Paystack returns the passenger to the same URL either way, and verifying the transaction means a server call. The message is true of both and invites another attempt. An explicit `?payment=cancelled` is honoured for a future adapter that sends one.
 - **No "Pay now" on a prepay ride with no fare yet** (`total_price` null — the route had no fare configured). The RPC refuses it and tells them to pay the driver, which the card already says.
 - **No receipt, and no refund.** Both belong with #32 and a provider refund call.
+| `PassengerQueue` and `BookingManagement` **Complete** buttons → `CompleteRideButton` | Both surfaces had a bare Complete that fired immediately. Bookings had no payment gating of any kind. |
+| `README.md` — feature-table row, and a paragraph under **Payments** | The two rules are now part of what the platform promises, and the paragraph says which function enforces them. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 120/120 (12 files) · `npm run build` OK.
+
+Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shim, then asserted the behaviour directly: an unpaid prepay booking and an unpaid prepay ride are both refused (through a raw `UPDATE` *and* through `dispatch_ride_request`); the same rows complete once paid; completing a cash booking and a cash ride sets `payment_status = 'paid'`; cancelling an unpaid prepay row still works and leaves `payment_status` alone; and re-saving a completed row is a no-op for both rules. Eight assertions, all passed. The scratch cluster was local only — no migration, shim or script is committed here, since CI's `database` job is #41's work.
+
+### Not changed (deliberately)
+- **No `types.ts` change.** The trigger function is revoked from `anon`/`authenticated` and exposes no new table, column or RPC, so the hand-written types are already correct.
+- **Admins and `service_role` are not exempt.** The money either arrived or it did not, and neither role can make it arrive by asking. To close an unpaid prepay row: cancel it, or mark the payment paid first — which for a real payment is the webhook's job.
+- **A prepay row that is `not_required` is treated as unpaid, not waived.** On a prepay row that value is a data fault; reading it as a waiver would turn the fault into a free ride.
+- **No operator-side "mark prepay as paid".** Letting an operator declare a provider payment received is exactly the hole this closes. The passenger's own way to pay is #31.
+- **No `Complete` for a prepay booking whose passenger never pays.** The operator's only exit is Cancel. A partial-settlement or write-off path is a real gap but it is an owner decision, not this issue.
 
 ---
 
