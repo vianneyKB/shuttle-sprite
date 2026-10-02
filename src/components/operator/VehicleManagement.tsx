@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -9,6 +9,8 @@ import {
   useDeleteVehicle,
 } from '@/hooks/useVehicles';
 import { useMyOperatorSettings } from '@/hooks/useOperatorSettings';
+import { discardVehicleImages } from '@/hooks/useVehicleImage';
+import { VehicleImageField } from './VehicleImageField';
 import { formatMoney } from '@/lib/money';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,7 +33,6 @@ const vehicleSchema = z.object({
   pricePerHour: z.coerce.number().min(0).max(10000),
   pricePerDay: z.coerce.number().min(0).max(100000),
   location: z.string().trim().min(1, 'Location is required').max(120),
-  image: z.string().trim().url('Must be a valid URL').max(500).optional().or(z.literal('')),
 });
 type VehicleFormValues = z.infer<typeof vehicleSchema>;
 
@@ -45,32 +46,66 @@ export const VehicleManagement: React.FC = () => {
   const [editing, setEditing] = useState<Vehicle | null>(null);
   const [open, setOpen] = useState(false);
   const [features, setFeatures] = useState<string[]>([]);
+  const [image, setImage] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  // Photos uploaded while this dialog has been open, and what the row ended up
+  // keeping (undefined until a save). Whatever is left over when the dialog
+  // closes — a replaced photo, an abandoned one — is deleted from the bucket.
+  const uploadsRef = useRef<string[]>([]);
+  const savedRef = useRef<string | null | undefined>(undefined);
 
   const form = useForm<VehicleFormValues>({
     resolver: zodResolver(vehicleSchema),
     defaultValues: {
       make: '', model: '', year: new Date().getFullYear(),
-      capacity: 4, pricePerHour: 50, pricePerDay: 400, location: '', image: '',
+      capacity: 4, pricePerHour: 50, pricePerDay: 400, location: '',
     },
   });
+
+  const startDialog = () => {
+    setUploading(false);
+    uploadsRef.current = [];
+    savedRef.current = undefined;
+    setOpen(true);
+  };
+
+  const onImageChange = (url: string) => {
+    if (url) uploadsRef.current = [...uploadsRef.current, url];
+    setImage(url);
+  };
+
+  /** Closing is the moment nothing points at the leftovers any more. */
+  const onDialogOpenChange = (next: boolean) => {
+    setOpen(next);
+    if (next) return;
+    const saved = savedRef.current;
+    const keep = saved !== undefined ? saved : editing?.image ?? null;
+    const candidates = saved !== undefined
+      ? [...uploadsRef.current, editing?.image]
+      : uploadsRef.current;
+    void discardVehicleImages(candidates, keep);
+  };
 
   const openAdd = () => {
     setEditing(null);
     setFeatures([]);
+    setImage('');
     form.reset({ make: '', model: '', year: new Date().getFullYear(),
-      capacity: 4, pricePerHour: 50, pricePerDay: 400, location: '', image: '' });
-    setOpen(true);
+      capacity: 4, pricePerHour: 50, pricePerDay: 400, location: '' });
+    startDialog();
   };
 
   const openEdit = (v: Vehicle) => {
     setEditing(v);
     setFeatures(v.features);
+    setImage(v.image ?? '');
     form.reset({
       make: v.make, model: v.model, year: v.year, capacity: v.capacity,
       pricePerHour: v.pricePerHour, pricePerDay: v.pricePerDay,
-      location: v.location, image: v.image ?? '',
+      location: v.location,
     });
-    setOpen(true);
+    startDialog();
   };
 
   const onSubmit = async (values: VehicleFormValues) => {
@@ -85,13 +120,14 @@ export const VehicleManagement: React.FC = () => {
           pricePerHour: values.pricePerHour,
           pricePerDay: values.pricePerDay,
           location: values.location,
-          image: values.image || undefined,
+          image: image || undefined,
           features,
           available: editing?.available ?? true,
         },
       });
+      savedRef.current = image || null;
       toast.success(editing ? 'Vehicle updated' : 'Vehicle added');
-      setOpen(false);
+      onDialogOpenChange(false);
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'Failed to save vehicle');
     }
@@ -106,6 +142,7 @@ export const VehicleManagement: React.FC = () => {
     if (!confirm('Delete this vehicle?')) return;
     try {
       await remove.mutateAsync(v.id);
+      void discardVehicleImages([v.image], null);
       toast.success('Vehicle deleted');
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'Failed to delete'); }
   };
@@ -200,7 +237,7 @@ export const VehicleManagement: React.FC = () => {
         </CardContent></Card>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={onDialogOpenChange}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Edit Vehicle' : 'Add Vehicle'}</DialogTitle>
@@ -215,7 +252,6 @@ export const VehicleManagement: React.FC = () => {
                 { name: 'pricePerHour', label: `Price / Hour (${settings?.currency ?? '…'})`, type: 'number' },
                 { name: 'pricePerDay', label: `Price / Day (${settings?.currency ?? '…'})`, type: 'number' },
                 { name: 'location', label: 'Location' },
-                { name: 'image', label: 'Image URL (optional)' },
               ] as ReadonlyArray<{ name: keyof VehicleFormValues; label: string; type?: string }>).map(f => (
                 <div key={f.name}>
                   <Label htmlFor={f.name}>{f.label}</Label>
@@ -228,6 +264,12 @@ export const VehicleManagement: React.FC = () => {
                 </div>
               ))}
             </div>
+            <VehicleImageField
+              value={image}
+              onChange={onImageChange}
+              onUploadingChange={setUploading}
+              disabled={upsert.isPending}
+            />
             <div>
               <Label>Features</Label>
               <div className="flex flex-wrap gap-2 mt-2">
@@ -243,8 +285,8 @@ export const VehicleManagement: React.FC = () => {
               </div>
             </div>
             <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-              <Button type="submit" disabled={upsert.isPending}>
+              <Button type="button" variant="outline" onClick={() => onDialogOpenChange(false)}>Cancel</Button>
+              <Button type="submit" disabled={upsert.isPending || uploading}>
                 {upsert.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Saving…</> : editing ? 'Update' : 'Create'}
               </Button>
             </div>
