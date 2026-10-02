@@ -5,6 +5,44 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-10-02 — #34 Vehicle image upload to Supabase Storage
+
+branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_vehicle_images_storage.sql`
+
+**Why:** the vehicle form asked an operator to paste an "Image URL", so every photo in the fleet lived on somebody else's host — a Facebook CDN link, a WhatsApp image, a free image host — and broke when that host did, with nobody to notice but the passenger looking at a blank card. Photos now go into a `vehicle-images` bucket this project owns. The bucket is public to read, because the listing is public and a passenger browsing shuttles is often not signed in yet; writing is confined to operators, each under a folder named after their own user id, so one operator cannot overwrite or delete another's photos. Size and type are capped on the bucket itself — the check in the browser is a courtesy, not the control.
+
+### Added
+| Item | Why |
+|---|---|
+| `supabase/migrations/20261002041042_vehicle_images_storage.sql` — the `vehicle-images` bucket (public, 5 MB, JPEG/PNG/WebP/AVIF) and four policies on `storage.objects` | Public SELECT; INSERT/UPDATE/DELETE only for a caller who holds the `operator` role and only where the first path segment is their own `auth.uid()`. UPDATE carries the same test in `WITH CHECK` as in `USING`, so an operator cannot move an object into their own folder to claim it. |
+| `src/lib/vehicleImage.ts` — bucket name, limits, `imageFileError`, `slugifyFileName`, `vehicleImagePath`, `storagePathFromPublicUrl`, `orphanedImages` | Pure rules, so the path the policy checks and the URL parsing are testable without a session. The upload path is built from the signed-in user id, never from anything the form supplies. |
+| `src/hooks/useVehicleImage.ts` — `useUploadVehicleImage` and `discardVehicleImages` | Upload returns the public URL that goes into `vehicles.image`. The discard is best-effort and silent: a leftover object is not worth an error toast, and URLs hosted elsewhere are never touched. |
+| `src/components/operator/VehicleImageField.tsx` | Pick, preview, replace, remove — with the accepted formats and size limit stated next to the button rather than discovered by a rejected upload. |
+| `src/lib/__tests__/vehicleImage.test.ts` — 16 cases | The limits match the bucket, the extension follows the real MIME type and not the name the operator gave, a re-upload of the same filename cannot collide, and a third-party URL is never offered up for deletion. |
+| Storage assertions in `supabase/tests/20_rls.sql`, and a `storage` schema in `supabase/tests/00_shim.sql` | The new policies are only as good as the replay that exercises them: an operator writes under their own prefix and nowhere else, a passenger cannot write at all even under their own id, an operator cannot create a bucket, operator B can read A's photo but deleting or renaming it moves zero rows, and anon can read. |
+
+### Removed
+| Item | Why |
+|---|---|
+| The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `VehicleManagement` holds `image` in state (like `features`) rather than in the form schema | The value now comes from an upload, not from typing, so it is not something the resolver validates. |
+| Closing the vehicle dialog cleans up | Photos uploaded during the edit that the saved row does not reference — a replacement, or an upload then Cancel — are deleted from the bucket, as is the photo a saved vehicle has moved off. Deleting a vehicle deletes its photo. Without this, every replaced photo would stay in the bucket forever with no screen that could find it. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **122/122** (16 new) · `npm run build` OK · migration replay + RLS suite green against a throwaway `postgres:16`: 20 migrations applied from an empty database, every assertion passed, and the bucket row and all four policies verified present afterwards.
+
+### Not changed (deliberately)
+- **`src/integrations/supabase/types.ts` is untouched.** The generated types cover the `public` schema; this change adds no table, column or function there — Storage is reached through `supabase.storage`, which is typed by the client library.
+- **No image resizing or transformation.** Supabase's image transformation is a paid add-on; the 5 MB cap keeps the listing usable without it. Worth revisiting if operators start uploading phone-camera originals.
+- **Existing third-party image URLs are left as they are.** They still render, and the field lets an operator replace one with an upload when they next edit the vehicle. Nothing deletes a URL this app does not host.
+- Noticed while in the file, left alone: the operator fleet card prints `${v.pricePerHour}` with a hard-coded `$` instead of `formatMoney`, and the availability badge only renders when a vehicle has a photo. Neither is this issue.
+
+---
+
 ## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
 branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
 
