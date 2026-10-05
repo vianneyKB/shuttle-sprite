@@ -59,6 +59,7 @@ Sign up as **Passenger** or **Operator**. Operators manage routes, fleet, bookin
 ```
 src/
   components/
+    layout/       PageShell, Header, LazyFallback (code-split placeholders)
     map/          RouteMap, RideRequestModal
     customer/     RoutesMapPanel, MyRides, fleet booking
     operator/     RouteManagement, PassengerQueue, dashboard
@@ -116,8 +117,29 @@ by the platform — do not set them yourself.
 | `npm run lint` | ESLint |
 | `npm run typecheck` | TypeScript check (no emit) |
 | `npm test` | Vitest unit tests |
+| `npm run check:bundle` | Initial-JS budget for the last `npm run build` (CI fails over it) |
 | `npm run preview` | Preview the production build locally |
 | `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
+
+## Bundle size
+
+Every page is a separate chunk (`React.lazy` in `src/App.tsx`), and so are both
+maps — Leaflet is about a third of the JavaScript in this app and only the
+routes map and the stop editor need it. A passenger therefore never downloads
+the operator dashboard, and nobody downloads Leaflet before opening a map.
+
+The first load is **~165 kB gzipped** (561 kB raw) across six chunks: React,
+Supabase, a shared `vendor` chunk, and the entry. `npm run check:bundle` reads
+`dist/index.html`, adds up the entry script and every `modulepreload` beside it,
+and fails if the total passes 200 kB gzipped — so a stray top-level import that
+drags a page's worth of code into the entry is caught in CI rather than on a
+phone. Vendor grouping is `build.rolldownOptions.output.codeSplitting` in
+`vite.config.ts`; the groups are tagged `$initial` so they only ever capture
+modules the entry already loads.
+
+When you add a heavy dependency that one screen needs, reach for `React.lazy`
+and a `PanelFallback` from `src/components/layout/LazyFallback.tsx` rather than
+raising the budget.
 
 ## Deploy
 

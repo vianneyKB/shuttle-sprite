@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from "react";
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from "react-leaflet";
 import L from "leaflet";
 import "@/lib/leaflet";
-import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/leaflet";
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/mapDefaults";
 import { normalizePoint, stopBounds } from "@/lib/routeStops";
 import { RoutePolyline } from "@/components/map/RoutePolyline";
 

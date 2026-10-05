@@ -5,6 +5,61 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-10-05 — #35 Code-split by route; target < 300 kB initial JS
+branch `routine/issue-35` → `Dev` · closes #35 · no migration (build and client only)
+
+**Why:** the whole app arrived as one 1,034 kB script (302 kB gzipped) before anything appeared on screen. A passenger tapping a link on a phone paid for the operator dashboard, both maps and every form before the sign-in box could render — and Leaflet, a third of that weight, is needed by exactly two screens. Every page is now its own chunk, both maps are loaded when they are first shown, and the first load is **165 kB gzipped across six chunks instead of 302 kB in one**. A budget check in CI keeps it that way, because a bundle only has to be split once to be un-split by the next stray import.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/components/layout/LazyFallback.tsx` — `PageFallback` and `PanelFallback` | A `Suspense` boundary that renders nothing collapses the layout and the page jumps when the chunk lands. `PanelFallback` takes the box the real component will fill (the map's own `h-[min(420px,55dvh)] sm:h-[480px]`), so the map tab looks the same before and after. Both announce themselves with `role="status"` and an `sr-only` label, since a spinner alone says nothing to a screen reader. |
+| `src/lib/mapDefaults.ts` — `DEFAULT_MAP_CENTER`, `DEFAULT_MAP_ZOOM` | These two constants lived in `src/lib/leaflet.ts`, next to its `import L from "leaflet"`. `src/lib/routeStops.ts` — whose own header says it exists so the rules are testable "without a map" — imported one of them, which pulled Leaflet into every chunk that touched those pure helpers. Splitting the file is what makes the lazy map boundary actually hold. |
+| `scripts/bundle-budget.mjs` and `npm run check:bundle`, run in CI after `Build` | Reads `dist/index.html`, adds up the entry script and every `modulepreload` next to it, prints each chunk, and exits non-zero over **200 kB gzipped**. The split is only worth having if it is enforced: one top-level `import` of a page in a shared module silently restores the single bundle, and nothing else would notice. |
+| `scripts/__tests__/bundleBudget.test.mjs` — 11 tests | The script decides whether CI passes, so its rule is tested: entry first then preloads, stylesheets and `prefetch` links excluded, a chunk listed twice counted once, an un-built HTML file reporting nothing, the base path stripped, raw and gzip totals, and OK/EXCEEDED exactly at the budget. A parser that matched nothing would report 0 kB and always pass. |
+| `build.rolldownOptions.output.codeSplitting` groups in `vite.config.ts` — `react`, `supabase`, `vendor` | Vendor chunks as the issue suggested: the dependencies that change on a dependency bump are separated from the app code that changes every deploy, so a release no longer invalidates 1 MB of cache. Each group is tagged **`$initial`** — without that, a `node_modules` group sweeps Leaflet out of the lazy map chunk and into a chunk the entry has to preload, quietly undoing the split. |
+| `build.chunkSizeWarningLimit: 300` | Set **after** the split, as the issue asked, not instead of it: the build is clean at 300 kB today, so the warning now means something. The largest chunk is 197 kB. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `src/App.tsx` — all seven pages are `React.lazy`, under one `Suspense` inside `AuthProvider` | The entry now holds the shell, the session and the toasters and nothing else. The boundary sits inside `AuthProvider` so the session is still resolved while a page downloads, and `ProtectedRoute` / `RoleRoute` still decide before a chunk is fetched — an operator-only chunk is not requested by someone without the role. |
+| `src/components/customer/CustomerView.tsx` — `RoutesMapPanel` is lazy | Leaflet lands when the Routes tab is first shown. It is the default tab, so this is a second request rather than a saving for a passenger who opens the map — but the sign-in page, My rides and fleet booking no longer pay for it. |
+| `src/components/operator/RouteManagement.tsx` — `RouteStopsMap` is lazy | The stop editor is inside a dialog. The dashboard chunk no longer carries a map that only opens when an operator edits a route. |
+| `src/lib/leaflet.ts` now also owns `leaflet/dist/leaflet.css`, moved out of `src/main.tsx` | The stylesheet was global, so it shipped in the initial CSS for every page. It now travels with the chunk that draws a map: initial CSS 80.7 kB → 65.9 kB, with the remaining 14.8 kB alongside the map. |
+| `README.md` — new **Bundle size** section, `check:bundle` in Scripts, `layout/` in the project layout | Says where the boundaries are and what to do when the next heavy dependency arrives: lazy-load it, do not raise the budget. |
+
+### Verification
+| Command | Result |
+|---|---|
+| `npm ci --legacy-peer-deps` | OK |
+| `npm run lint` | 0 errors, 8 pre-existing shadcn warnings |
+| `npm run typecheck` | clean |
+| `npm test` | **117/117** (12 files); 11 new in `scripts/__tests__/bundleBudget.test.mjs`, suite 106 → 117 |
+| `npm run build` | OK, **no chunk-size warning at a 300 kB limit** |
+| `npm run check:bundle` | 165.26 kB gzipped (560.69 kB raw) over 6 chunks — under the 200 kB budget |
+
+Before and after, as the build reports them:
+
+| | Initial JS, raw | Initial JS, gzipped | JS chunks built | Initial CSS |
+|---|---|---|---|---|
+| Before | 1,034.14 kB in one chunk | 301.97 kB | 1 | 80.73 kB |
+| After | 560.69 kB over 6 chunks | **165.26 kB** | 25 | 65.92 kB |
+
+Largest chunks after the split: `supabase` 196.7 kB, `react` 189.6 kB, `vendor` 174.8 kB (all initial); `RoutePolyline` 160.4 kB — Leaflet and `react-leaflet` — and `Operator` 65.3 kB, both lazy.
+
+The built app was then driven in headless Chromium against `npm run preview`, since a lazy route that fails only fails at runtime: `/` redirects to `/auth` and renders the sign-in form, `/forgot-password` and an unknown path render their own pages, each fetching its own chunk, **no Leaflet chunk is requested on any of them**, and the console is clean. The signed-in surfaces — the map tab and `/operator` — were not driven: both need a real Supabase session, which this environment has no key for. Their chunks are the same `React.lazy` boundary as the three that were exercised.
+
+### Not changed (deliberately)
+- **The target reads as "no chunk over 300 kB", which is met; under 300 kB *raw* for the whole first load is not reachable** and is not attempted. React and `react-dom` are 189.6 kB and `@supabase/supabase-js` 196.7 kB, and both are needed before the first paint: the router needs React, and `AuthProvider` asks Supabase for the session to decide whether to show a page or the sign-in box. That is 386 kB raw before a line of our own code. The gzipped figure the issue quotes alongside its target — 285 kB then, 302 kB when this started — is now 165 kB.
+- **The budget is set at 200 kB gzipped, not the issue's 300 kB.** A budget above where the build already sits can never fail; 200 kB leaves room for a feature without leaving room for the single-bundle regression. Raising it should be a deliberate edit to `scripts/bundle-budget.mjs`, visible in a diff.
+- **No lazy loading of the toasters, the tooltip provider or `QueryClientProvider`.** They are mounted at the root and a toast can fire during the first render, so a boundary around them buys a few kB for a real risk of a dropped message.
+- **`@supabase/supabase-js` is not trimmed.** Importing `@supabase/postgrest-js` and the auth client separately rather than the umbrella package would cut the largest initial chunk, but it changes how every hook in the app reaches the database and deserves its own issue.
+- **No route prefetching.** Hinting the next likely chunk on hover or after idle would hide the second request, but it also spends a passenger's data on a page they may not open. Worth measuring before adding.
+- Noticed while in these files, left alone: the initial `vendor` chunk is 174.8 kB and nothing here says what is in it — splitting `react-router`, `@tanstack/react-query` and the Radix primitives apart would make a regression in any one of them legible, but it adds requests and is a tuning question, not this issue's.
+
+---
+
 ## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
 branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
 
