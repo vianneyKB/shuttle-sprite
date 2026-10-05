@@ -1,12 +1,17 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Map, Car, List } from "lucide-react";
-import { RoutesMapPanel } from "./RoutesMapPanel";
 import { VehicleSearch } from "./VehicleSearch";
 import { VehicleList } from "./VehicleList";
 import { MyRides } from "./MyRides";
 import { BookingModal } from "./BookingModal";
 import { useAppContext } from "@/context/AppContext";
+import { PanelFallback } from "@/components/layout/LazyFallback";
+
+/** Leaflet is a third of the bundle and only this tab needs it. */
+const RoutesMapPanel = lazy(() =>
+  import("./RoutesMapPanel").then((m) => ({ default: m.RoutesMapPanel }))
+);
 
 export const CustomerView: React.FC = () => {
   const { state } = useAppContext();
@@ -36,7 +41,16 @@ export const CustomerView: React.FC = () => {
         </TabsList>
 
         <TabsContent value="map">
-          <RoutesMapPanel />
+          <Suspense
+            fallback={
+              <PanelFallback
+                className="h-[min(420px,55dvh)] sm:h-[480px]"
+                label="Loading the routes map…"
+              />
+            }
+          >
+            <RoutesMapPanel />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="book" className="space-y-8">

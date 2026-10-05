@@ -4,7 +4,7 @@
  * needs a real DOM, the decisions it drives do not.
  */
 
-import { DEFAULT_MAP_CENTER } from "@/lib/leaflet";
+import { DEFAULT_MAP_CENTER } from "@/lib/mapDefaults";
 
 export type StopPoint = { lat: number; lng: number };
 

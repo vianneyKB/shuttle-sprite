@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
 import "@/lib/leaflet";
-import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/leaflet";
+import { DEFAULT_MAP_CENTER, DEFAULT_MAP_ZOOM } from "@/lib/mapDefaults";
 import { RoutePolyline } from "@/components/map/RoutePolyline";
 import type { RouteStop, ShuttleRoute } from "@/types";
 import { Input } from "@/components/ui/input";
