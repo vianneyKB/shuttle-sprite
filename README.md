@@ -41,6 +41,20 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key |
 | `VITE_NOMINATIM_EMAIL` | Optional. Contact address sent with each reverse-geocode lookup, as the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) asks |
 | `VITE_NOMINATIM_URL` | Optional. Own Nominatim reverse endpoint; defaults to `https://nominatim.openstreetmap.org/reverse` |
+| `VITE_SENTRY_DSN` | Optional. Sentry DSN for crash reporting. Unset (the default) means nothing is reported and no requests are made |
+| `VITE_SENTRY_ENVIRONMENT` | Optional. Label on reported events; defaults to the Vite mode |
+| `VITE_SENTRY_RELEASE` | Optional. Version reported events are tagged with, e.g. the commit sha |
+
+### Error reporting
+
+A top-level error boundary (`src/components/layout/ErrorBoundary.tsx`) catches render
+errors and shows a fallback with a Reload button rather than a blank screen. Crashes,
+uncaught errors and unhandled rejections go to Sentry when `VITE_SENTRY_DSN` is set;
+with no DSN the reporter is inert.
+
+Reports are posted straight to Sentry's envelope endpoint (`src/lib/errorReporting.ts`),
+so there is no SDK in the bundle. Query strings and hashes are stripped from reported
+URLs — Supabase recovery links carry access tokens there — and no user identity is sent.
 
 ## Routes
 

@@ -18,7 +18,6 @@ export const VehicleCard: React.FC<VehicleCardProps> = ({ vehicle }) => {
   const handleBookNow = () => {
     dispatch({ type: 'SET_SELECTED_VEHICLE', payload: vehicle });
     dispatch({ type: 'TOGGLE_BOOKING_MODAL' });
-    console.log('Opening booking modal for vehicle:', vehicle.id);
   };
 
   return (
