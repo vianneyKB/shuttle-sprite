@@ -12,6 +12,7 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
+| **Admin** | **Operator approval** — sign-up files an application, an admin grants the operator role; read-only view of every booking and ride request |
 | **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
 
 ## Tech stack
@@ -49,10 +50,21 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 | `/` | Authenticated | Passenger home (map, fleet, my rides) |
 | `/profile` | Authenticated | Your name and mobile number |
 | `/operator` | Operator or admin | Operator dashboard |
+| `/admin` | Admin | Operator applications, every booking, every ride request |
 | `/vendor` | — | Redirects to `/operator` |
 | `/auth` | Public | Sign in / sign up |
 
 Sign up as **Passenger** or **Operator**. Operators manage routes, fleet, bookings, and the passenger queue.
+
+Choosing **Operator** at sign-up files an application rather than granting the role: the account
+starts as a working passenger account and an admin approves it at `/admin`. The `admin` role is
+not self-serve either — grant the first one directly in the database:
+
+```sql
+insert into public.user_roles (user_id, role)
+values ('<auth.users.id>', 'admin')
+on conflict do nothing;
+```
 
 ## Project layout
 

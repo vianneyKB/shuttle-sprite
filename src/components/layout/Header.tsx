@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet';
-import { Car, Users, LogOut, Menu, User } from 'lucide-react';
+import { Car, Users, LogOut, Menu, User, ShieldCheck } from 'lucide-react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '@/context/AuthContext';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -11,9 +11,10 @@ export const Header: React.FC = () => {
   const canSwitchRole = isOperator || isAdmin;
   const location = useLocation();
   const isOperatorRoute = location.pathname.startsWith('/operator');
-  // On /profile neither side of the role switch is the current view.
+  const isAdminRoute = location.pathname.startsWith('/admin');
+  // On /profile none of the role views is the current one.
   const isProfileRoute = location.pathname.startsWith('/profile');
-  const passengerActive = !isOperatorRoute && !isProfileRoute;
+  const passengerActive = !isOperatorRoute && !isAdminRoute && !isProfileRoute;
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
 
@@ -47,6 +48,22 @@ export const Header: React.FC = () => {
           Operator
         </Link>
       </Button>
+      {isAdmin && (
+        <Button
+          asChild
+          variant="ghost"
+          size="sm"
+          className={`w-full justify-start min-h-11 ${
+            isAdminRoute ? 'gradient-primary text-white' : ''
+          }`}
+          onClick={() => setMenuOpen(false)}
+        >
+          <Link to="/admin">
+            <ShieldCheck className="w-4 h-4 mr-2 shrink-0" />
+            Admin
+          </Link>
+        </Button>
+      )}
     </>
   );
 
@@ -98,6 +115,23 @@ export const Header: React.FC = () => {
                   <span className="hidden sm:inline">Operator</span>
                 </Link>
               </Button>
+              {isAdmin && (
+                <Button
+                  asChild
+                  variant="ghost"
+                  size="sm"
+                  className={`px-3 sm:px-4 py-2 rounded-full min-h-10 ${
+                    isAdminRoute
+                      ? 'gradient-primary text-white shadow-elevation'
+                      : 'text-secondary-600'
+                  }`}
+                >
+                  <Link to="/admin">
+                    <ShieldCheck className="w-4 h-4 sm:mr-2" />
+                    <span className="hidden sm:inline">Admin</span>
+                  </Link>
+                </Button>
+              )}
             </div>
           )}
 

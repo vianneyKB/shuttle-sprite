@@ -47,3 +47,35 @@ export const useUpdateMyProfile = () => {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["profile"] }),
   });
 };
+
+export type ProfileSummary = {
+  id: string;
+  displayName: string;
+  phone: string;
+};
+
+/**
+ * Names and numbers for a set of accounts, keyed by id. `profiles_select` only
+ * returns rows other than your own to an admin, so this is empty for everyone
+ * else — callers fall back to the id.
+ */
+export const useProfileSummaries = (userIds: string[]) => {
+  const ids = [...new Set(userIds)].sort();
+  return useQuery({
+    queryKey: ["profile", "summaries", ids],
+    enabled: ids.length > 0,
+    queryFn: async (): Promise<Map<string, ProfileSummary>> => {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("id, display_name, phone")
+        .in("id", ids);
+      if (error) throw error;
+      return new Map(
+        (data ?? []).map((r) => [
+          r.id,
+          { id: r.id, displayName: r.display_name ?? "", phone: r.phone ?? "" },
+        ])
+      );
+    },
+  });
+};

@@ -172,6 +172,24 @@ export interface RideFareAdjustment {
   reason: string;
 }
 
+export type OperatorApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * One account's request to operate, filed by the sign-up trigger when the form
+ * claims the operator role and decided only by an admin. The operator role is
+ * granted when the application is approved — never at sign-up.
+ */
+export interface OperatorApplication {
+  id: string;
+  userId: string;
+  status: OperatorApplicationStatus;
+  requestedAt: Date;
+  decidedAt?: Date;
+  decidedBy?: string;
+  /** Required on a rejection: the reason the applicant reads. */
+  decisionNote?: string;
+}
+
 export interface RouteFare {
   id: string;
   routeId: string;
