@@ -150,6 +150,36 @@ export type Database = {
           },
         ]
       }
+      operator_applications: {
+        Row: {
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          requested_at: string
+          status: Database["public"]["Enums"]["operator_application_status"]
+          user_id: string
+        }
+        Insert: {
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          requested_at?: string
+          status?: Database["public"]["Enums"]["operator_application_status"]
+          user_id: string
+        }
+        Update: {
+          decided_at?: string | null
+          decided_by?: string | null
+          decision_note?: string | null
+          id?: string
+          requested_at?: string
+          status?: Database["public"]["Enums"]["operator_application_status"]
+          user_id?: string
+        }
+        Relationships: []
+      }
       operator_settings: {
         Row: {
           additional_stop_fee: number
@@ -706,6 +736,22 @@ export type Database = {
           description: string
         }[]
       }
+      review_operator_application: {
+        Args: {
+          _user_id: string
+          _approve: boolean
+          _note?: string | null
+        }
+        Returns: {
+          decided_at: string | null
+          decided_by: string | null
+          decision_note: string | null
+          id: string
+          requested_at: string
+          status: Database["public"]["Enums"]["operator_application_status"]
+          user_id: string
+        }
+      }
       mark_payment_paid: {
         Args: {
           _provider: string
@@ -725,6 +771,7 @@ export type Database = {
     Enums: {
       app_role: "admin" | "operator" | "customer"
       booking_status: "pending" | "confirmed" | "completed" | "cancelled"
+      operator_application_status: "pending" | "approved" | "rejected"
       payment_method: "cash" | "prepay"
       ride_request_status:
         | "awaiting"
@@ -862,6 +909,7 @@ export const Constants = {
     Enums: {
       app_role: ["admin", "operator", "customer"],
       booking_status: ["pending", "confirmed", "completed", "cancelled"],
+      operator_application_status: ["pending", "approved", "rejected"],
       payment_method: ["cash", "prepay"],
       ride_request_status: [
         "awaiting",

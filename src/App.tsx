@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import Index from "./pages/Index";
 import OperatorPage from "./pages/Operator";
+import AdminPage from "./pages/Admin";
 import NotFound from "./pages/NotFound";
 import Auth from "./pages/Auth";
 import ProfilePage from "./pages/Profile";
@@ -50,6 +51,14 @@ const App = () => (
               element={
                 <RoleRoute allow={["operator", "admin"]}>
                   <OperatorPage />
+                </RoleRoute>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RoleRoute allow={["admin"]}>
+                  <AdminPage />
                 </RoleRoute>
               }
             />

@@ -5,6 +5,42 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-11-09 — #38 Admin view: approve operators, see all bookings and requests
+branch `routine/issue-38` → `Dev` · closes #38 · migration `20261109040509_admin_operator_applications.sql`
+
+**Why:** the `admin` role and its policies have existed since the first migration and nothing used them, which hid a real problem: being an operator was self-granted. The sign-up form sent `role: 'operator'` and `handle_new_user` honoured it, so anyone who picked "Operator" could immediately publish routes, set fares and take passengers' money — 20260906135126 left that in place with a note to move it behind an admin flow. This is that flow. A claim of 'operator' now files an application, the account starts as a working passenger account, and an admin decides. The second half is read access: `bookings_select` and `booking_stops_select` were the only read policies without an admin branch, so an admin could see every ride request and not a single booking.
+
+### Added
+| Item | Why |
+|---|---|
+| `operator_applications` — one row per account that asked to operate, with `requested_at`, the decision, who made it and the reason | `user_id` is unique, which is what makes the sign-up insert and the backfill idempotent. Two check constraints keep the row honest: a pending row carries no decision, and a rejection must carry a note, because a refusal the applicant cannot read a reason for is not a decision. |
+| `review_operator_application(_user_id, _approve, _note)` | SECURITY DEFINER for the same reason `create_booking` is: it is the single path, and it stamps the application and inserts into `user_roles` as one unit, so an approved application and a granted role cannot drift apart. The admin check is explicit and first. Refuses a rejection without a reason, and refuses to re-decide an application that was already decided. |
+| `/admin`, behind `RoleRoute allow={['admin']}` — tabs for **Operators**, **Bookings** and **Ride requests** | The applications tab splits waiting (oldest first, so the longest wait is at the top) from approved and rejected, with approve and a reject dialog. The other two are read-only tables of every booking and every ride request, newest first. |
+| `src/lib/operatorApplications.ts` — `rejectionNoteError`, `groupApplications`, `accountLabel`, `daysWaiting` (+9 tests) | `rejectionNoteError` mirrors the `decision_note` constraint and the RPC's refusal, so the form says no before the round trip does. `accountLabel` falls back to a short id, because a display name is nullable. |
+| `useOperatorApplications`, `useMyOperatorApplication`, `useReviewOperatorApplication`, `useAllBookings`, `useAllRideRequests`, `useProfileSummaries` (+2 mapper tests, suite 106 → 117) | The three admin-wide queries are gated on `isAdmin` as well as RLS, so a passenger's client never issues a query that can only come back empty. |
+| **Your operator application is being reviewed** notice on the passenger home, and the same warning at sign-up | Signing up as an operator no longer grants the role, so without this the applicant lands on a passenger view with no explanation. A rejected applicant is shown the recorded reason. |
+| 11 RLS assertions for the new table and the admin booking read | An applicant cannot approve themselves (no UPDATE policy — asserted as a zero-row no-op, which is what Postgres does), cannot insert their own `user_roles` row, and cannot call the RPC; an operator is not an admin; an admin sees every booking and its stops where an operator sees neither. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `handle_new_user` inserts `customer` always, and files an application when 'operator' was claimed | `raw_user_meta_data` is client-supplied and was already untrusted input — it stopped granting 'admin' in September and no longer grants 'operator' either. The customer role goes in regardless of what was claimed so the account is immediately usable while it waits. |
+| `bookings_select` and `booking_stops_select` gained an admin branch | Required for "see all bookings". Both policies are recreated whole so the end state reads in one place; everything else is unchanged from 20260917120000. |
+| `supabase/tests/10_seed.sql` grants `operator` to both test operators out of band, approves their applications, and adds one account still waiting | The seed relied on `handle_new_user` granting the role from metadata, which was the behaviour this change removes. Operators A and B are approved so the pending list contains only the account that is genuinely waiting. |
+| Header shows an **Admin** link to admins, on desktop and in the mobile sheet | `/admin` is otherwise only reachable by typing the URL. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 117/117 · `npm run build` OK · **database suite green locally**: all 20 migrations replayed from an empty Postgres 16, seed and every RLS assertion passed (`scripts/test-db.sh`).
+
+### Not changed (deliberately)
+- **Existing operators keep working.** The migration backfills an approved application for every account that already holds the `operator` role, noting in `decision_note` that it predates approval rather than inventing an approver. The pending list therefore starts empty and nobody loses work they already have.
+- **The first admin is still a manual grant.** Nothing in the product can create an admin — by design, since `handle_new_user` refuses the claim. Granting it is one `insert into public.user_roles`, now written down in the README. On a project with no admin row, operator applications will queue until someone runs it; that is the one deployment step this change adds.
+- **No revoke path.** An application moves `pending → approved | rejected` and no further, so an approved operator cannot be demoted from this screen. Suspending a live operator has to deal with their routes, fares and rides in flight, which is its own piece of work.
+- **A passenger cannot apply later.** Applications are filed at sign-up only; there is deliberately no INSERT policy on the table, so nothing can be written from a client. "Become an operator" from an existing passenger account is a separate change.
+- **The admin tabs are read-only.** No cancelling a booking or redispatching a ride from `/admin`; the policies allow an admin to do both, but acting on another operator's work needs its own audit trail, as fare corrections got in #57.
+
+---
+
 ## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
 branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
 

@@ -3,6 +3,7 @@ import { mapBooking, type DbBooking, type DbStop } from "../useBookings";
 import { buildRoutePayload, mapRoute, type DbRoute, type DbRouteStop } from "../useRoutes";
 import { mapAssignedVehicle, mapRideRequest, type DbAssignedVehicle, type DbRideRequest } from "../useRideRequests";
 import { mapVehicle, type DbVehicle } from "../useVehicles";
+import { mapOperatorApplication, type DbOperatorApplication } from "../useOperatorApplications";
 
 // Postgres numeric columns arrive from PostgREST as strings; the mappers must coerce them.
 const num = (s: string) => s as unknown as number;
@@ -264,5 +265,40 @@ describe("mapVehicle", () => {
     expect(v.features).toEqual([]);
     expect(v.image).toBe("");
     expect(v.operatorName).toBe("Operator");
+  });
+});
+
+describe("mapOperatorApplication", () => {
+  const pending: DbOperatorApplication = {
+    id: "app1",
+    user_id: "u1",
+    status: "pending",
+    requested_at: "2026-10-01T09:30:00Z",
+    decided_at: null,
+    decided_by: null,
+    decision_note: null,
+  };
+
+  it("leaves the decision fields undefined while the application waits", () => {
+    const a = mapOperatorApplication(pending);
+    expect(a.status).toBe("pending");
+    expect(a.requestedAt).toEqual(new Date("2026-10-01T09:30:00Z"));
+    expect(a.decidedAt).toBeUndefined();
+    expect(a.decidedBy).toBeUndefined();
+    expect(a.decisionNote).toBeUndefined();
+  });
+
+  it("reads back the decision, the admin who made it and the reason", () => {
+    const a = mapOperatorApplication({
+      ...pending,
+      status: "rejected",
+      decided_at: "2026-10-03T07:00:00Z",
+      decided_by: "admin1",
+      decision_note: "No operating licence on file",
+    });
+    expect(a.status).toBe("rejected");
+    expect(a.decidedAt).toEqual(new Date("2026-10-03T07:00:00Z"));
+    expect(a.decidedBy).toBe("admin1");
+    expect(a.decisionNote).toBe("No operating licence on file");
   });
 });

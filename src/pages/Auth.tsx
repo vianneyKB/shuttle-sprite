@@ -80,7 +80,11 @@ const Auth: React.FC = () => {
       toast.error(error.message);
       return;
     }
-    toast.success("Account created. Check your email to confirm, then sign in.");
+    toast.success(
+      values.role === "operator"
+        ? "Account created. Confirm your email, then sign in — an administrator will review your operator application."
+        : "Account created. Check your email to confirm, then sign in."
+    );
     setTab("signin");
   };
 
@@ -186,6 +190,13 @@ const Auth: React.FC = () => {
                     <SelectItem value="operator">Operator (manage routes & fleet)</SelectItem>
                   </SelectContent>
                 </Select>
+                {signUpForm.watch("role") === "operator" && (
+                  <p className="text-xs text-secondary-600 mt-1">
+                    Operator accounts are approved by an administrator. You can book and ride as
+                    a passenger straight away; routes, fleet and fares open up once you are
+                    approved.
+                  </p>
+                )}
               </div>
               <Button type="submit" className="w-full" disabled={submitting}>
                 {submitting ? "Creating account…" : "Create account"}
