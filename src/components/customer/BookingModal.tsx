@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { useAppContext } from '@/context/AppContext';
 import { useCreateBooking, useCalculatePrice } from '@/hooks/useBookings';
 import { useMyProfile } from '@/hooks/useProfile';
-import { formatMoney } from '@/lib/money';
+import { bookingBreakdownRows } from '@/lib/priceBreakdown';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -286,38 +286,19 @@ export const BookingModal: React.FC = () => {
               <div className="flex items-center text-sm text-secondary-600"><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Calculating…</div>
             ) : breakdown ? (
               <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span>Base rate ({breakdown.duration}h × {formatMoney(breakdown.hourlyRate, breakdown.currency)})</span>
-                  <span>{formatMoney(breakdown.hourlyRate * breakdown.duration, breakdown.currency)}</span>
-                </div>
-                {breakdown.additionalStops > 0 && (
-                  <div className="flex justify-between">
-                    <span>Additional stops ({breakdown.additionalStops} × {formatMoney(breakdown.additionalStopFee, breakdown.currency)})</span>
-                    <span>{formatMoney(breakdown.additionalStopsCost, breakdown.currency)}</span>
+                {bookingBreakdownRows(breakdown).map(row => (
+                  <div
+                    key={row.id}
+                    className={[
+                      'flex justify-between',
+                      row.rule ? 'pt-2 border-t border-primary-200' : '',
+                      row.strong ? 'font-semibold text-lg' : '',
+                    ].filter(Boolean).join(' ')}
+                  >
+                    <span>{row.label}</span>
+                    <span>{row.value}</span>
                   </div>
-                )}
-                {breakdown.recurringMultiplier > 1 && (
-                  <div className="flex justify-between">
-                    <span>Recurring ({breakdown.recurringMultiplier} days / week)</span>
-                    <span>× {breakdown.recurringMultiplier}</span>
-                  </div>
-                )}
-                {breakdown.taxRate > 0 && (
-                  <>
-                    <div className="flex justify-between pt-2 border-t border-primary-200">
-                      <span>Subtotal{breakdown.pricesIncludeTax ? ' (excl. tax)' : ''}</span>
-                      <span>{formatMoney(breakdown.subtotal, breakdown.currency)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span>{breakdown.taxLabel} ({breakdown.taxRate}%)</span>
-                      <span>{formatMoney(breakdown.taxAmount, breakdown.currency)}</span>
-                    </div>
-                  </>
-                )}
-                <div className="flex justify-between font-semibold text-lg pt-2 border-t border-primary-200">
-                  <span>Total</span>
-                  <span>{formatMoney(breakdown.finalTotal, breakdown.currency)}</span>
-                </div>
+                ))}
               </div>
             ) : (
               <p className="text-sm text-secondary-600">Enter trip details to see pricing.</p>
