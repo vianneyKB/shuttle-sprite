@@ -80,7 +80,7 @@ export const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
 });
 
 /** price_breakdown from older rows lacks the currency/tax keys; fill them from the row. */
-const normaliseBreakdown = (b: DbBooking): PriceBreakdown => {
+export const normaliseBreakdown = (b: DbBooking): PriceBreakdown => {
   const raw = (b.price_breakdown ?? {}) as Partial<PriceBreakdown>;
   const total = Number(b.total_price);
   return {
