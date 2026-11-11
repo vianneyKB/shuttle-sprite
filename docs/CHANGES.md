@@ -5,6 +5,44 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-11-11 — #40 Playwright E2E: signup → route → request → confirm → status
+branch `routine/issue-40` → `Dev` · closes #40 · no migration
+
+**Why:** every test in this repo so far checks one layer on its own — the mappers in jsdom, the RLS rules against a bare Postgres, the payment adapters as plain TypeScript. Nothing has ever checked that the layers meet: that a route created in the operator dialog actually appears as a marker on the passenger's map, that the request the passenger submits is the row the operator's queue groups, that the dispatch RPC's state machine lets the operator reach `completed`, and that the passenger is then told. That is the journey the product is, and it now runs in a browser against a real Supabase, so a break between two layers fails a test instead of a customer.
+
+### Added
+| Item | Why |
+|---|---|
+| `e2e/journey.spec.ts` — one test, four `test.step`s: operator signs up → fleet + route with two stops → passenger signs up and requests a ride → operator confirms, assigns, starts, completes → passenger reads the final status | One journey in order, on one page object, because the value is in the hand-offs between the two accounts. Split into steps so a failure names the half it happened in. Everything is suffixed with the run's timestamp: the passenger map shows **every** active route in the database, so unique names keep this run's route, stops and vehicle unambiguous on a stack other runs have used. |
+| `e2e/helpers/app.ts` — `signUp`, `signIn`, `signOut`, `gotoOperator`, `addVehicle`, `createRoute`, `requestRide`, `dispatchRideToCompletion`, `openMyRides` | Selectors are accessible names, labels and the header's own role switch — a rename a passenger would notice fails the test, a refactor nobody notices does not. `gotoOperator` clicks the header link rather than visiting `/operator`, which also waits for the roles `RoleRoute` checks. `requestRide` opens stop popups in turn until it finds the named one, since Leaflet markers are otherwise indistinguishable. |
+| `e2e/helpers/admin.ts` — deletes the two accounts a run created | Housekeeping only, and a no-op without `SUPABASE_SERVICE_ROLE_KEY`. Every row the journey writes hangs off those users with `on delete cascade`, so deleting them is the whole cleanup. The journey itself goes through the UI on the anon key, exactly as a passenger does. |
+| `playwright.config.ts` | One chromium project, `workers: 1`, `fullyParallel: false` — two copies of this journey over one database would make the queue ambiguous. Starts `npm run dev` itself unless `E2E_BASE_URL` points at a server already running. `trace: "on-first-retry"`: tracing every run costs a third of the CPU, and a retry is when it is wanted. |
+| `scripts/test-e2e.sh` | `supabase start`, then **`supabase db reset`** so the run begins from a database the migrations built alone, then Playwright. Set `VITE_SUPABASE_URL` + `VITE_SUPABASE_PUBLISHABLE_KEY` and it skips the CLI and uses that project instead. |
+| `.github/workflows/e2e.yml` — `workflow_dispatch` only, uploads the HTML report | What #40 asks for: manual until it has proved itself, because a Supabase stack plus a browser is minutes, not the seconds the `verify` job takes. |
+| `tsconfig.e2e.json`, wired into `npm run typecheck` | `tsconfig.app.json` only covers `src`, so without this the suite would be the one unchecked TypeScript in the repo — and it is `strict`, which the app config is not. |
+| `[auth]` / `[auth.email]` in `supabase/config.toml` | Pins what the local stack must do for the journey to run: sign-up returns a session, and the dev server's origin is an allowed redirect. These are the CLI's own defaults, pinned so the test does not depend on them; the hosted project's auth settings live in the dashboard. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `vite.config.ts` — vitest now has an explicit `include` (`src/**` and `supabase/functions/**`) | Vitest's default glob collects `**/*.spec.ts`, which would have swept the Playwright journey into jsdom and failed on `@playwright/test`. Unit count unchanged at 106. |
+| `package.json` — `@playwright/test` pinned at `1.63.0`, `test:e2e` script, `typecheck` covers both projects | Pinned rather than floating so a CI browser download and a developer's cached browser agree on a version. |
+| `README.md` — a **Tests** section covering all three suites | The database suite from #41 was not written down anywhere either; the three suites and what each is for now sit in one table. |
+| `.gitignore` — `playwright-report`, `test-results` | Run output is not source. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean, app **and** e2e projects · `npm test` 106/106 · `npm run build` OK · `npx playwright test --list` resolves the journey.
+
+**The journey itself has not been run yet.** This environment has no route to the Docker registry, so `supabase start` cannot pull its images here. What was exercised against the live dev server with Chromium: every locator on the auth page — both tabs, all four sign-up fields, the role select and its two options, the sign-in fields and submit — each resolving to exactly one element. The remaining selectors (operator tabs, both dialogs, the map popup, the queue, My rides) were written against the components and are unverified until the **E2E** workflow is dispatched or someone runs `npm run test:e2e` locally. Dispatching that workflow on this branch is the next step.
+
+### Not changed (deliberately)
+- **No `pull_request` trigger**, as the issue asks: `workflow_dispatch` first, promoted once it has passed a few times.
+- **Stops are placed with the "Add stop" button, not by clicking the map.** The button runs the same `addStopAt` the map click runs, with a seeded coordinate; a synthetic click on a Leaflet pane would test Leaflet, not this app.
+- **Payment stays on "cash on board"** and no fare is set on the route, so the journey asserts "fare payable on board". Prepay needs a provider's hosted checkout page, which belongs with #31/#32 and cannot be driven in a test.
+- **Noticed, not fixed:** `AuthContext` clears `loading` before roles have loaded, so a direct visit to `/operator` straight after sign-in can bounce to `/` before `RoleRoute` sees the operator role. The test clicks the header link, which is what a person does; the race is worth its own issue.
+
+---
+
 ## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
 branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
 

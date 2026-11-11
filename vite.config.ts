@@ -23,6 +23,9 @@ export default defineConfig(({ mode }) => ({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./src/test/setup.ts"],
+    // Playwright owns e2e/; without this vitest would also collect its specs
+    // and run a browser journey in jsdom.
+    include: ["src/**/*.{test,spec}.{ts,tsx}", "supabase/functions/**/*.{test,spec}.ts"],
     env: {
       VITE_SUPABASE_URL: "https://test.supabase.co",
       VITE_SUPABASE_PUBLISHABLE_KEY: "test-key",

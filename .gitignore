@@ -29,3 +29,7 @@ dist-ssr
 
 # Supabase CLI scratch
 supabase/.temp
+
+# Playwright
+playwright-report
+test-results
