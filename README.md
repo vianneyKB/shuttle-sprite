@@ -114,10 +114,42 @@ by the platform — do not set them yourself.
 | `npm run dev` | Dev server at http://localhost:8080/ |
 | `npm run build` | Production build (base `/shuttle-sprite/`) into `dist/` |
 | `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript check (no emit) |
+| `npm run typecheck` | TypeScript check (no emit) — the app and the `e2e/` suite |
 | `npm test` | Vitest unit tests |
+| `npm run test:e2e` | Playwright end-to-end journey against a real Supabase |
 | `npm run preview` | Preview the production build locally |
 | `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
+
+## Tests
+
+| Suite | Command | What it covers |
+|-------|---------|----------------|
+| Unit | `npm test` | Mappers, pricing arithmetic, timeline and schedule helpers, the payment adapters |
+| Database | `DATABASE_URL=... bash scripts/test-db.sh` | Replays every migration from an empty Postgres, then asserts the RLS rules |
+| End-to-end | `npm run test:e2e` | One real journey through the browser: operator signs up → route with two stops → passenger requests a ride → operator confirms, starts and completes it → passenger sees the final status |
+
+The end-to-end suite drives Chromium against a **real Supabase**, so it is the
+only test that exercises the RLS policies, the dispatch RPC and the realtime
+subscription together. It signs users up, creates a route and dispatches a
+ride, so it must only ever point at a throwaway database.
+
+```sh
+npm run test:e2e             # starts the local stack with the Supabase CLI (needs Docker)
+npm run test:e2e -- --headed # watch it happen
+npm run test:e2e -- --trace on
+```
+
+`scripts/test-e2e.sh` runs `supabase start` and `supabase db reset`, so each run
+begins from a database built by the migrations alone. To use a dedicated hosted
+test project instead, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`
+and the script leaves the CLI alone. `SUPABASE_SERVICE_ROLE_KEY` is optional and
+is used for nothing but deleting the two accounts a run creates.
+
+CI runs the journey from the **E2E** workflow on `workflow_dispatch` only — it
+needs a Supabase stack and a browser, which is minutes rather than seconds.
+GitHub only offers `workflow_dispatch` for workflows already on the default
+branch, so until `e2e.yml` has reached `main` the journey can only be run
+locally; after that, **Actions → E2E → Run workflow** takes any branch.
 
 ## Deploy
 
