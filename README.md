@@ -147,6 +147,9 @@ is used for nothing but deleting the two accounts a run creates.
 
 CI runs the journey from the **E2E** workflow on `workflow_dispatch` only — it
 needs a Supabase stack and a browser, which is minutes rather than seconds.
+GitHub only offers `workflow_dispatch` for workflows already on the default
+branch, so until `e2e.yml` has reached `main` the journey can only be run
+locally; after that, **Actions → E2E → Run workflow** takes any branch.
 
 ## Deploy
 
