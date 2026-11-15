@@ -11,7 +11,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Calendar, MapPin, Loader2, Bus } from "lucide-react";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/money";
+import { canPayNow } from "@/lib/payments";
 import { FareAdjustedNote } from "./FareAdjustedNote";
+import { PayNowButton } from "./PayNowButton";
 
 const Row = ({ children, className }: { children: React.ReactNode; className?: string }) => (
   <p className={className}>{children}</p>
@@ -108,21 +110,34 @@ export const MyRides: React.FC = () => {
                     <p className="text-sm text-red-700">This request was cancelled.</p>
                   )}
 
-                  {r.status === "awaiting" && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={async () => {
-                        try {
-                          await cancelRequest.mutateAsync(r.id);
-                          toast.success("Request cancelled");
-                        } catch (e: unknown) {
-                          toast.error(e instanceof Error ? e.message : "Cancel failed");
-                        }
-                      }}
-                    >
-                      Cancel request
-                    </Button>
+                  {(canPayNow(r) || r.status === "awaiting") && (
+                    <div className="flex flex-wrap gap-2">
+                      {canPayNow(r) && (
+                        <PayNowButton
+                          targetType="ride_request"
+                          targetId={r.id}
+                          totalPrice={r.totalPrice}
+                          currency={r.currency}
+                        />
+                      )}
+
+                      {r.status === "awaiting" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={async () => {
+                            try {
+                              await cancelRequest.mutateAsync(r.id);
+                              toast.success("Request cancelled");
+                            } catch (e: unknown) {
+                              toast.error(e instanceof Error ? e.message : "Cancel failed");
+                            }
+                          }}
+                        >
+                          Cancel request
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -150,21 +165,34 @@ export const MyRides: React.FC = () => {
                   <Bus className="w-4 h-4 inline mr-1" />
                   {b.paymentMethod} · {b.paymentStatus.replace("_", " ")}
                 </p>
-                {b.status === "pending" && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={async () => {
-                      try {
-                        await cancelBooking.mutateAsync(b.id);
-                        toast.success("Booking cancelled");
-                      } catch (e: unknown) {
-                        toast.error(e instanceof Error ? e.message : "Cancel failed");
-                      }
-                    }}
-                  >
-                    Cancel booking
-                  </Button>
+                {(canPayNow(b) || b.status === "pending") && (
+                  <div className="flex flex-wrap gap-2">
+                    {canPayNow(b) && (
+                      <PayNowButton
+                        targetType="booking"
+                        targetId={b.id}
+                        totalPrice={b.totalPrice}
+                        currency={b.currency}
+                      />
+                    )}
+
+                    {b.status === "pending" && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          try {
+                            await cancelBooking.mutateAsync(b.id);
+                            toast.success("Booking cancelled");
+                          } catch (e: unknown) {
+                            toast.error(e instanceof Error ? e.message : "Cancel failed");
+                          }
+                        }}
+                      >
+                        Cancel booking
+                      </Button>
+                    )}
+                  </div>
                 )}
               </CardContent>
             </Card>

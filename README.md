@@ -7,7 +7,7 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | Area | Capability |
 |------|------------|
 | **Passenger** | Interactive route map (Leaflet), ride requests between stops, fleet booking, **My rides** (requests + bookings) |
-| **Passenger** | Payment choice: **cash on board** or **pay in advance** |
+| **Passenger** | Payment choice: **cash on board** or **pay in advance**; **Pay now** on any unpaid prepay ride or booking |
 | **Operator** | Route CRUD with ordered stops (LineString geometry); stop names prefilled from OpenStreetMap (Nominatim reverse geocoding) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
@@ -82,6 +82,15 @@ Prepay bookings and ride requests are paid on a provider-hosted checkout page.
 | `payment-webhook` | Provider signature (`verify_jwt = false`) | Verifies HMAC over the raw body, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
 
 The client never sends an amount: it posts `{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+
+**Pay now** appears on **My rides** for any prepay ride or booking still marked
+`pending` with an amount owing. It calls `create-checkout-session` and sends the
+passenger to the provider's page. The provider returns them to
+`PAYMENT_CALLBACK_URL` with the reference in the query string; the app reads it,
+clears it from the address bar, checks the row's `payment_status` (re-checking
+for a few seconds, because the webhook can land after the redirect) and toasts
+the result. So `PAYMENT_CALLBACK_URL` must point at the app's passenger home —
+the page that renders **My rides** — not at an Edge Function.
 
 ### Deploy and configure
 
