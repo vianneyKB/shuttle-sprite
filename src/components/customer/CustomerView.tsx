@@ -7,6 +7,12 @@ import { MyRides } from "./MyRides";
 import { BookingModal } from "./BookingModal";
 import { useAppContext } from "@/context/AppContext";
 import { usePaymentReturn } from "@/hooks/usePayments";
+import { PanelFallback } from "@/components/layout/LazyFallback";
+
+/** Leaflet is a third of the bundle and only this tab needs it. */
+const RoutesMapPanel = lazy(() =>
+  import("./RoutesMapPanel").then((m) => ({ default: m.RoutesMapPanel }))
+);
 
 export const CustomerView: React.FC = () => {
   const { state } = useAppContext();

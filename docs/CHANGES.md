@@ -9,11 +9,6 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 branch `routine/issue-35` → `Dev` · closes #35 · no migration (build and client only)
 
 **Why:** the whole app arrived as one 1,034 kB script (302 kB gzipped) before anything appeared on screen. A passenger tapping a link on a phone paid for the operator dashboard, both maps and every form before the sign-in box could render — and Leaflet, a third of that weight, is needed by exactly two screens. Every page is now its own chunk, both maps are loaded when they are first shown, and the first load is **165 kB gzipped across six chunks instead of 302 kB in one**. A budget check in CI keeps it that way, because a bundle only has to be split once to be un-split by the next stray import.
-## 2026-10-02 — #34 Vehicle image upload to Supabase Storage
-
-branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_vehicle_images_storage.sql`
-
-**Why:** the vehicle form asked an operator to paste an "Image URL", so every photo in the fleet lived on somebody else's host — a Facebook CDN link, a WhatsApp image, a free image host — and broke when that host did, with nobody to notice but the passenger looking at a blank card. Photos now go into a `vehicle-images` bucket this project owns. The bucket is public to read, because the listing is public and a passenger browsing shuttles is often not signed in yet; writing is confined to operators, each under a folder named after their own user id, so one operator cannot overwrite or delete another's photos. Size and type are capped on the bucket itself — the check in the browser is a courtesy, not the control.
 
 ### Added
 | Item | Why |
@@ -24,17 +19,6 @@ branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_v
 | `scripts/__tests__/bundleBudget.test.mjs` — 11 tests | The script decides whether CI passes, so its rule is tested: entry first then preloads, stylesheets and `prefetch` links excluded, a chunk listed twice counted once, an un-built HTML file reporting nothing, the base path stripped, raw and gzip totals, and OK/EXCEEDED exactly at the budget. A parser that matched nothing would report 0 kB and always pass. |
 | `build.rolldownOptions.output.codeSplitting` groups in `vite.config.ts` — `react`, `supabase`, `vendor` | Vendor chunks as the issue suggested: the dependencies that change on a dependency bump are separated from the app code that changes every deploy, so a release no longer invalidates 1 MB of cache. Each group is tagged **`$initial`** — without that, a `node_modules` group sweeps Leaflet out of the lazy map chunk and into a chunk the entry has to preload, quietly undoing the split. |
 | `build.chunkSizeWarningLimit: 300` | Set **after** the split, as the issue asked, not instead of it: the build is clean at 300 kB today, so the warning now means something. The largest chunk is 197 kB. |
-| `supabase/migrations/20261002041042_vehicle_images_storage.sql` — the `vehicle-images` bucket (public, 5 MB, JPEG/PNG/WebP/AVIF) and four policies on `storage.objects` | Public SELECT; INSERT/UPDATE/DELETE only for a caller who holds the `operator` role and only where the first path segment is their own `auth.uid()`. UPDATE carries the same test in `WITH CHECK` as in `USING`, so an operator cannot move an object into their own folder to claim it. |
-| `src/lib/vehicleImage.ts` — bucket name, limits, `imageFileError`, `slugifyFileName`, `vehicleImagePath`, `storagePathFromPublicUrl`, `orphanedImages` | Pure rules, so the path the policy checks and the URL parsing are testable without a session. The upload path is built from the signed-in user id, never from anything the form supplies. |
-| `src/hooks/useVehicleImage.ts` — `useUploadVehicleImage` and `discardVehicleImages` | Upload returns the public URL that goes into `vehicles.image`. The discard is best-effort and silent: a leftover object is not worth an error toast, and URLs hosted elsewhere are never touched. |
-| `src/components/operator/VehicleImageField.tsx` | Pick, preview, replace, remove — with the accepted formats and size limit stated next to the button rather than discovered by a rejected upload. |
-| `src/lib/__tests__/vehicleImage.test.ts` — 16 cases | The limits match the bucket, the extension follows the real MIME type and not the name the operator gave, a re-upload of the same filename cannot collide, and a third-party URL is never offered up for deletion. |
-| Storage assertions in `supabase/tests/20_rls.sql`, and a `storage` schema in `supabase/tests/00_shim.sql` | The new policies are only as good as the replay that exercises them: an operator writes under their own prefix and nowhere else, a passenger cannot write at all even under their own id, an operator cannot create a bucket, operator B can read A's photo but deleting or renaming it moves zero rows, and anon can read. |
-
-### Removed
-| Item | Why |
-|---|---|
-| The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
 
 ### Changed
 | Item | Why |
@@ -73,6 +57,33 @@ The built app was then driven in headless Chromium against `npm run preview`, si
 - **`@supabase/supabase-js` is not trimmed.** Importing `@supabase/postgrest-js` and the auth client separately rather than the umbrella package would cut the largest initial chunk, but it changes how every hook in the app reaches the database and deserves its own issue.
 - **No route prefetching.** Hinting the next likely chunk on hover or after idle would hide the second request, but it also spends a passenger's data on a page they may not open. Worth measuring before adding.
 - Noticed while in these files, left alone: the initial `vendor` chunk is 174.8 kB and nothing here says what is in it — splitting `react-router`, `@tanstack/react-query` and the Radix primitives apart would make a regression in any one of them legible, but it adds requests and is a tuning question, not this issue's.
+
+---
+
+## 2026-10-02 — #34 Vehicle image upload to Supabase Storage
+
+branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_vehicle_images_storage.sql`
+
+**Why:** the vehicle form asked an operator to paste an "Image URL", so every photo in the fleet lived on somebody else's host — a Facebook CDN link, a WhatsApp image, a free image host — and broke when that host did, with nobody to notice but the passenger looking at a blank card. Photos now go into a `vehicle-images` bucket this project owns. The bucket is public to read, because the listing is public and a passenger browsing shuttles is often not signed in yet; writing is confined to operators, each under a folder named after their own user id, so one operator cannot overwrite or delete another's photos. Size and type are capped on the bucket itself — the check in the browser is a courtesy, not the control.
+
+### Added
+| Item | Why |
+|---|---|
+| `supabase/migrations/20261002041042_vehicle_images_storage.sql` — the `vehicle-images` bucket (public, 5 MB, JPEG/PNG/WebP/AVIF) and four policies on `storage.objects` | Public SELECT; INSERT/UPDATE/DELETE only for a caller who holds the `operator` role and only where the first path segment is their own `auth.uid()`. UPDATE carries the same test in `WITH CHECK` as in `USING`, so an operator cannot move an object into their own folder to claim it. |
+| `src/lib/vehicleImage.ts` — bucket name, limits, `imageFileError`, `slugifyFileName`, `vehicleImagePath`, `storagePathFromPublicUrl`, `orphanedImages` | Pure rules, so the path the policy checks and the URL parsing are testable without a session. The upload path is built from the signed-in user id, never from anything the form supplies. |
+| `src/hooks/useVehicleImage.ts` — `useUploadVehicleImage` and `discardVehicleImages` | Upload returns the public URL that goes into `vehicles.image`. The discard is best-effort and silent: a leftover object is not worth an error toast, and URLs hosted elsewhere are never touched. |
+| `src/components/operator/VehicleImageField.tsx` | Pick, preview, replace, remove — with the accepted formats and size limit stated next to the button rather than discovered by a rejected upload. |
+| `src/lib/__tests__/vehicleImage.test.ts` — 16 cases | The limits match the bucket, the extension follows the real MIME type and not the name the operator gave, a re-upload of the same filename cannot collide, and a third-party URL is never offered up for deletion. |
+| Storage assertions in `supabase/tests/20_rls.sql`, and a `storage` schema in `supabase/tests/00_shim.sql` | The new policies are only as good as the replay that exercises them: an operator writes under their own prefix and nowhere else, a passenger cannot write at all even under their own id, an operator cannot create a bucket, operator B can read A's photo but deleting or renaming it moves zero rows, and anon can read. |
+
+### Removed
+| Item | Why |
+|---|---|
+| The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
+
+### Changed
+| Item | Why |
+|---|---|
 | `VehicleManagement` holds `image` in state (like `features`) rather than in the form schema | The value now comes from an upload, not from typing, so it is not something the resolver validates. |
 | Closing the vehicle dialog cleans up | Photos uploaded during the edit that the saved row does not reference — a replacement, or an upload then Cancel — are deleted from the bucket, as is the photo a saved vehicle has moved off. Deleting a vehicle deletes its photo. Without this, every replaced photo would stay in the bucket forever with no screen that could find it. |
 
