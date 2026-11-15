@@ -305,6 +305,9 @@ describe("mapOperatorApplication", () => {
     expect(a.decidedAt).toEqual(new Date("2026-10-03T07:00:00Z"));
     expect(a.decidedBy).toBe("admin1");
     expect(a.decisionNote).toBe("No operating licence on file");
+  });
+});
+
 describe("mapOperatorSettings", () => {
   const row: DbOperatorSettings = {
     operator_id: "o1",

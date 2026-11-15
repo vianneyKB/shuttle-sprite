@@ -35,7 +35,6 @@ export const CustomerView: React.FC = () => {
 
       <OperatorApplicationNotice />
 
-      <Tabs defaultValue="map" className="w-full">
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6 h-auto min-h-11">
           <TabsTrigger value="map" className="flex items-center gap-1.5 text-xs sm:text-sm">

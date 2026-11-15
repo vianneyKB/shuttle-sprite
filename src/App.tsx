@@ -4,14 +4,6 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import Index from "./pages/Index";
-import OperatorPage from "./pages/Operator";
-import AdminPage from "./pages/Admin";
-import NotFound from "./pages/NotFound";
-import Auth from "./pages/Auth";
-import ProfilePage from "./pages/Profile";
-import ForgotPassword from "./pages/ForgotPassword";
-import ResetPassword from "./pages/ResetPassword";
 import { AuthProvider } from "./context/AuthContext";
 import { ProtectedRoute } from "./components/auth/ProtectedRoute";
 import { RoleRoute } from "./components/auth/RoleRoute";
@@ -24,6 +16,7 @@ import { PageFallback } from "./components/layout/LazyFallback";
  */
 const Index = lazy(() => import("./pages/Index"));
 const OperatorPage = lazy(() => import("./pages/Operator"));
+const AdminPage = lazy(() => import("./pages/Admin"));
 const Auth = lazy(() => import("./pages/Auth"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
@@ -41,45 +34,6 @@ const App = () => (
       <Sonner />
       <BrowserRouter basename={routerBasename}>
         <AuthProvider>
-          <Routes>
-            <Route path="/auth" element={<Auth />} />
-            <Route path="/forgot-password" element={<ForgotPassword />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Index />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/profile"
-              element={
-                <ProtectedRoute>
-                  <ProfilePage />
-                </ProtectedRoute>
-              }
-            />
-            <Route
-              path="/operator"
-              element={
-                <RoleRoute allow={["operator", "admin"]}>
-                  <OperatorPage />
-                </RoleRoute>
-              }
-            />
-            <Route
-              path="/admin"
-              element={
-                <RoleRoute allow={["admin"]}>
-                  <AdminPage />
-                </RoleRoute>
-              }
-            />
-            <Route path="/vendor" element={<Navigate to="/operator" replace />} />
-            <Route path="*" element={<NotFound />} />
-          </Routes>
           <Suspense fallback={<PageFallback />}>
             <Routes>
               <Route path="/auth" element={<Auth />} />
@@ -106,6 +60,14 @@ const App = () => (
                 element={
                   <RoleRoute allow={["operator", "admin"]}>
                     <OperatorPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RoleRoute allow={["admin"]}>
+                    <AdminPage />
                   </RoleRoute>
                 }
               />
