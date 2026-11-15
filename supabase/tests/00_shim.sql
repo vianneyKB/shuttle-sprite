@@ -54,6 +54,59 @@ alter default privileges in schema public grant all on sequences to anon, authen
 alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
 
 -- ---------------------------------------------------------
+-- Supabase Storage: the objects table and the one helper the policies use.
+--
+-- 20261002041042 creates the `vehicle-images` bucket and its policies, so the
+-- replay needs somewhere to put them. Grants and RLS mirror a real project:
+-- both tables are granted to the API roles and locked down by policy, and
+-- `storage.buckets` has RLS on with no policies, which is why a client cannot
+-- make a bucket for itself.
+-- ---------------------------------------------------------
+create schema storage;
+grant usage on schema storage to anon, authenticated, service_role;
+
+create table storage.buckets (
+  id text primary key,
+  name text not null,
+  public boolean not null default false,
+  file_size_limit bigint,
+  allowed_mime_types text[],
+  created_at timestamptz not null default now()
+);
+
+create table storage.objects (
+  id uuid primary key default gen_random_uuid(),
+  bucket_id text references storage.buckets(id),
+  name text,
+  owner uuid,
+  metadata jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create unique index objects_bucket_id_name_idx on storage.objects(bucket_id, name);
+
+alter table storage.buckets enable row level security;
+alter table storage.objects enable row level security;
+
+grant select, insert, update, delete on storage.buckets to anon, authenticated, service_role;
+grant select, insert, update, delete on storage.objects to anon, authenticated, service_role;
+
+-- Every path segment except the filename, as Supabase defines it:
+-- storage.foldername('<uid>/car.jpg') = {'<uid>'}.
+create or replace function storage.foldername(name text)
+returns text[]
+language plpgsql
+immutable
+as $$
+declare parts text[];
+begin
+  parts := string_to_array(name, '/');
+  return parts[1:array_length(parts, 1) - 1];
+end $$;
+
+grant execute on function storage.foldername(text) to anon, authenticated, service_role;
+
+-- ---------------------------------------------------------
 -- Test helper: assert a statement is refused, and refused for the right
 -- reason. A typo in a test would otherwise raise undefined_column and be
 -- swallowed by a bare exception handler — a test that passes for the wrong

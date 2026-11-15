@@ -186,6 +186,7 @@ export type Database = {
           created_at: string
           currency: string
           operator_id: string
+          payment_provider: string
           prices_include_tax: boolean
           tax_label: string
           tax_rate: number
@@ -196,6 +197,7 @@ export type Database = {
           created_at?: string
           currency?: string
           operator_id: string
+          payment_provider?: string
           prices_include_tax?: boolean
           tax_label?: string
           tax_rate?: number
@@ -206,6 +208,7 @@ export type Database = {
           created_at?: string
           currency?: string
           operator_id?: string
+          payment_provider?: string
           prices_include_tax?: boolean
           tax_label?: string
           tax_rate?: number
@@ -718,6 +721,13 @@ export type Database = {
         }
         Returns: number
       }
+      operator_payment_provider: {
+        Args: {
+          _operator_id: string
+          _fallback?: string | null
+        }
+        Returns: string
+      }
       start_payment: {
         Args: {
           _user_id: string
@@ -734,6 +744,7 @@ export type Database = {
           customer_email: string | null
           customer_name: string | null
           description: string
+          provider: string
         }[]
       }
       review_operator_application: {
