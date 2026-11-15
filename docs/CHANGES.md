@@ -5,6 +5,10 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-10-06 — #36 Error boundary and error reporting
+branch `routine/issue-36` → `Dev` · closes #36 · no migration
+
+**Why:** a thrown render error took the whole page to white, and nobody found out. There was no boundary, so one bad row in a list ended the session; and no reporting, so every crash a passenger hit was invisible unless they said something. Both are now covered, and reporting stays completely inert until a DSN is set — the repo, CI and a developer with no Sentry account behave exactly as before.
 ## 2026-10-05 — #35 Code-split by route; target < 300 kB initial JS
 branch `routine/issue-35` → `Dev` · closes #35 · no migration (build and client only)
 
@@ -13,6 +17,13 @@ branch `routine/issue-35` → `Dev` · closes #35 · no migration (build and cli
 ### Added
 | Item | Why |
 |---|---|
+| `src/components/layout/ErrorBoundary.tsx` wrapping `<App />` in `main.tsx` | A render error now shows "Something went wrong", a **Reload the page** button and a link home instead of a blank screen. Deliberately built from `Card` and `Button` only, with no router, query-client or auth dependency: one of those failing is exactly how we get here, so the fallback must not need them. |
+| `src/lib/errorReporting.ts` — crash reporting to Sentry's **envelope endpoint** over plain `fetch` | The DSN is all Sentry needs to accept an event, so there is no SDK in the bundle: 0 kB added to an initial payload that #35 is trying to get under 300 kB. `parseDsn` turns the DSN into the ingest URL (self-hosted path prefixes included) and returns null for anything unusable, which leaves reporting off rather than throwing at start-up. |
+| Global `error` and `unhandledrejection` handlers, registered by `initErrorReporting()` | The boundary only sees render errors. An event handler that throws or a promise nobody awaited were the other two silent failures, and they are tagged by mechanism so they can be told apart in Sentry. |
+| A stack parser (Chrome and Firefox formats) producing Sentry frames, dependencies marked `in_app: false` | A report whose stack is one opaque string is barely worth having. Frames arrive oldest-first, which is the order Sentry wants and the reverse of how engines print them. |
+| Reference id on the fallback card when an event was sent | The person looking at the broken page can quote the exact event, instead of "it broke this morning". |
+| `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE` — in `.env.example`, the README environment table, an **Error reporting** section and `vite-env.d.ts` | All three optional. Without the DSN nothing is sent and no request is made. |
+| 22 tests (`errorReporting.test.ts`, `ErrorBoundary.test.tsx`); suite 106 → 128 | Cover DSN parsing, URL scrubbing, event and envelope shape, dedupe, the cap, a failing transport, and the boundary rendering its fallback and reporting the crash. |
 | `src/components/layout/LazyFallback.tsx` — `PageFallback` and `PanelFallback` | A `Suspense` boundary that renders nothing collapses the layout and the page jumps when the chunk lands. `PanelFallback` takes the box the real component will fill (the map's own `h-[min(420px,55dvh)] sm:h-[480px]`), so the map tab looks the same before and after. Both announce themselves with `role="status"` and an `sr-only` label, since a spinner alone says nothing to a screen reader. |
 | `src/lib/mapDefaults.ts` — `DEFAULT_MAP_CENTER`, `DEFAULT_MAP_ZOOM` | These two constants lived in `src/lib/leaflet.ts`, next to its `import L from "leaflet"`. `src/lib/routeStops.ts` — whose own header says it exists so the rules are testable "without a map" — imported one of them, which pulled Leaflet into every chunk that touched those pure helpers. Splitting the file is what makes the lazy map boundary actually hold. |
 | `scripts/bundle-budget.mjs` and `npm run check:bundle`, run in CI after `Build` | Reads `dist/index.html`, adds up the entry script and every `modulepreload` next to it, prints each chunk, and exits non-zero over **200 kB gzipped**. The split is only worth having if it is enforced: one top-level `import` of a page in a shared module silently restores the single bundle, and nothing else would notice. |
@@ -79,6 +90,7 @@ branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_v
 ### Removed
 | Item | Why |
 |---|---|
+| `console.log('Opening booking modal for vehicle:', …)` in `src/components/customer/VehicleCard.tsx` | The debug log the issue asks to clear. `src/hooks/useBookingCalculator.ts`, which the issue names, no longer exists — pricing moved into Postgres, and the hook went with it. |
 | The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
 
 ### Changed
@@ -147,6 +159,18 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 ### Changed
 | Item | Why |
 |---|---|
+| Reported URLs are stripped of query string, hash and credentials | **Privacy.** Supabase recovery links carry `access_token` in the hash, and `/reset-password` is a page that can crash. A crash report is not a place to leak a session token. Only the path, the error and the component stack are sent; no user id, email or mobile number. |
+| At most 20 events per page load, and the same error from the same frame only once | A render loop would otherwise send thousands of identical events. Dedupe is on message plus the first stack frame. |
+| Every send failure is swallowed (`fetch` is fire-and-forget with `keepalive`) | A reporter that throws into the page it is reporting on is worse than no reporter. `keepalive` so the last event still leaves a tab that is closing. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **128/128** · `npm run build` OK (bundle unchanged at 1,039.13 kB / 304 kB gzip — no dependency added).
+
+### Not changed (deliberately)
+- **No `@sentry/react` dependency.** The SDK adds roughly 30–40 kB gzipped to the initial bundle for session replay, tracing and breadcrumbs we are not using, while #35 is actively trying to get initial JS under 300 kB. The envelope endpoint is Sentry's documented public ingest API; events land in the same project, with stack frames and mechanism. If breadcrumbs or tracing are wanted later, swapping `reportError` for the SDK touches one module.
+- **No per-route boundaries.** One top-level boundary was what the issue asked for. Per-route boundaries would keep the header and navigation alive around a broken panel, which is nicer but a separate change.
+- `console.error` in `src/pages/NotFound.tsx` and `src/context/AuthContext.tsx` left alone — a 404 and a failed role load are handled conditions that log deliberately, not the debug noise the issue is about.
+- **No user context on events.** Attaching the signed-in user id would make triage easier and is a privacy decision for the owner, not a side effect of this issue.
 | `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
 | The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
 | The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
