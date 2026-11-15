@@ -1,4 +1,12 @@
+/**
+ * Leaflet's own side effects: the stylesheet and the default marker icon, whose
+ * image URLs the bundler has to rewrite. Importing this module is what pulls
+ * Leaflet in, so only map components should — see `@/lib/mapDefaults` for the
+ * viewport constants, which carry no such weight.
+ */
+
 import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 import markerIcon2x from "leaflet/dist/images/marker-icon-2x.png";
 import markerIcon from "leaflet/dist/images/marker-icon.png";
 import markerShadow from "leaflet/dist/images/marker-shadow.png";
@@ -14,6 +22,3 @@ const DefaultIcon = L.icon({
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
-
-export const DEFAULT_MAP_CENTER: [number, number] = [-26.2041, 28.0473];
-export const DEFAULT_MAP_ZOOM = 12;

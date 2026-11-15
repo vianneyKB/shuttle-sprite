@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { Suspense, lazy, useCallback, useEffect, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -32,10 +32,15 @@ import {
   MapPin,
 } from "lucide-react";
 import { RouteFaresDialog } from "./RouteFaresDialog";
-import { RouteStopsMap } from "./RouteStopsMap";
+import { PanelFallback } from "@/components/layout/LazyFallback";
 import { formatCoord, moveStop, nextStopSeed, toCoord } from "@/lib/routeStops";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+
+/** Only the edit dialog draws a map, so Leaflet stays out of the dashboard chunk. */
+const RouteStopsMap = lazy(() =>
+  import("./RouteStopsMap").then((m) => ({ default: m.RouteStopsMap }))
+);
 
 const routeSchema = z.object({
   name: z.string().trim().min(2).max(120),
@@ -400,15 +405,24 @@ export const RouteManagement: React.FC = () => {
               <p className="text-xs text-secondary-600">
                 Click the map to add a stop, drag a pin to move it. Pins are numbered in pickup order.
               </p>
-              <RouteStopsMap
-                stops={stops}
-                selectedKey={selectedKey}
-                onAdd={addStopAt}
-                onMove={(key, lat, lng) =>
-                  setStops((prev) => prev.map((s) => (s.key === key ? { ...s, lat, lng } : s)))
+              <Suspense
+                fallback={
+                  <PanelFallback
+                    className="h-[min(300px,40dvh)] sm:h-[340px]"
+                    label="Loading the stop editor map…"
+                  />
                 }
-                onSelect={setSelectedKey}
-              />
+              >
+                <RouteStopsMap
+                  stops={stops}
+                  selectedKey={selectedKey}
+                  onAdd={addStopAt}
+                  onMove={(key, lat, lng) =>
+                    setStops((prev) => prev.map((s) => (s.key === key ? { ...s, lat, lng } : s)))
+                  }
+                  onSelect={setSelectedKey}
+                />
+              </Suspense>
               {stops.length === 0 ? (
                 <p className="text-sm text-secondary-600 text-center py-2">
                   No stops yet — click the map to place the first one.

@@ -2,7 +2,13 @@ import React, { useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useMyOperatorSettings, useUpsertOperatorSettings, type OperatorSettingsInput } from "@/hooks/useOperatorSettings";
+import {
+  DEFAULT_PAYMENT_PROVIDER,
+  PAYMENT_PROVIDERS,
+  useMyOperatorSettings,
+  useUpsertOperatorSettings,
+  type OperatorSettingsInput,
+} from "@/hooks/useOperatorSettings";
 import { CURRENCY_OPTIONS, DEFAULT_CURRENCY, DEFAULT_TAX_RATE, formatMoney } from "@/lib/money";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Coins } from "lucide-react";
+import { Loader2, Coins, CreditCard } from "lucide-react";
 import { toast } from "sonner";
 
 const schema = z.object({
@@ -23,6 +29,7 @@ const schema = z.object({
   taxLabel: z.string().trim().min(1, "Required").max(30),
   pricesIncludeTax: z.boolean(),
   additionalStopFee: z.coerce.number().min(0, "Cannot be negative").max(100000),
+  paymentProvider: z.enum(["paystack", "stripe"]),
 });
 type FormValues = OperatorSettingsInput;
 
@@ -38,6 +45,7 @@ export const PricingSettings: React.FC = () => {
       taxLabel: "VAT",
       pricesIncludeTax: false,
       additionalStopFee: 15,
+      paymentProvider: DEFAULT_PAYMENT_PROVIDER,
     },
   });
 
@@ -49,6 +57,7 @@ export const PricingSettings: React.FC = () => {
         taxLabel: settings.taxLabel,
         pricesIncludeTax: settings.pricesIncludeTax,
         additionalStopFee: settings.additionalStopFee,
+        paymentProvider: settings.paymentProvider,
       });
     }
   }, [settings, form]);
@@ -56,7 +65,9 @@ export const PricingSettings: React.FC = () => {
   const currency = form.watch("currency");
   const taxRate = form.watch("taxRate");
   const incl = form.watch("pricesIncludeTax");
+  const paymentProvider = form.watch("paymentProvider");
   const knownCurrency = CURRENCY_OPTIONS.some((c) => c.code === currency);
+  const providerHint = PAYMENT_PROVIDERS.find((p) => p.value === paymentProvider)?.hint;
 
   const onSubmit = async (values: FormValues) => {
     try {
@@ -85,7 +96,7 @@ export const PricingSettings: React.FC = () => {
   return (
     <section className="space-y-6">
       <header>
-        <h2 className="text-2xl font-bold">Pricing &amp; tax</h2>
+        <h2 className="text-2xl font-bold">Pricing, tax &amp; payments</h2>
         <p className="text-secondary-600 text-sm">
           Currency and tax apply to all your vehicles. Existing bookings keep the values they were priced with.
         </p>
@@ -164,6 +175,35 @@ export const PricingSettings: React.FC = () => {
               {form.formState.errors.additionalStopFee && (
                 <p className="text-xs text-destructive">{form.formState.errors.additionalStopFee.message}</p>
               )}
+            </fieldset>
+
+            <fieldset className="space-y-2 border-0 p-0 pt-1 border-t">
+              <Label htmlFor="paymentProvider" className="flex items-center gap-2">
+                <CreditCard className="w-4 h-4 text-primary-600" /> Card payments taken by
+              </Label>
+              <Select
+                value={paymentProvider}
+                onValueChange={(v) =>
+                  form.setValue("paymentProvider", v as FormValues["paymentProvider"], {
+                    shouldDirty: true,
+                  })
+                }
+              >
+                <SelectTrigger id="paymentProvider" className="max-w-[260px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_PROVIDERS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>
+                      {p.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-secondary-500">
+                {providerHint} Passengers paying up front are sent to this provider's checkout page;
+                cash-on-board rides are unaffected.
+              </p>
             </fieldset>
 
             <Button type="submit" disabled={save.isPending || !form.formState.isDirty}>
