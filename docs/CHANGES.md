@@ -37,6 +37,68 @@ Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shi
 
 ---
 
+## 2026-09-29 — #31 Passenger: "Pay now" for pending prepay rides and bookings
+branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and both Edge Functions landed with #30)
+
+**Why:** the server half of prepay has been finished since #30 — `create-checkout-session` reads the amount from the row, `payment-webhook` flips `payment_status` — but a passenger who chose **pay in advance** had no way to reach it. The ride sat `prepay · pending` forever. This is the passenger's half: a **Pay now** button on anything that still owes money, and honest handling of the page they land back on. The client still never names a price; it posts only what it wants to pay for.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/lib/payments.ts` — `canPayNow`, `payNowLabel`, `readPaymentReturn`, `stripPaymentReturn`, `paymentReturnMessage`, `checkoutErrorMessage` (+13 tests, suite 106 → 119) | `canPayNow` mirrors `start_payment()`'s refusals exactly — prepay, `pending`, an amount above zero, not cancelled — so the button is never shown for something the RPC would reject. The return URL is parsed here, not in a component, because providers disagree about its shape (Paystack sends `reference` *and* `trxref`). |
+| `src/hooks/usePayments.ts` — `useStartCheckout`, `usePaymentByReference`, `usePaymentReturn` | `useStartCheckout` posts `{ targetType, targetId }` and nothing else; the amount and the provider stay server-side. `usePaymentByReference` resolves a reference against the passenger's **own** rows (RLS, plus an explicit `customer_id` filter) and re-checks five times over ~12 s, because the webhook can land after the redirect. |
+| `PayNowButton` on every unpaid prepay ride and fleet booking in **My rides** | The label carries the amount (`formatMoney`, the row's own currency) so the passenger sees the figure before leaving the app, and the spinner stays up through the redirect. A failure surfaces the Edge Function's own message ("This booking is already paid"), not an HTTP code. |
+| Return-URL handling in `CustomerView`: toast, tab switch to **My rides**, refetch | The passenger comes back to the ride they just paid for rather than the map. Paid → success toast and both lists refetch. |
+| README: **Pay now** in the feature table, and what `PAYMENT_CALLBACK_URL` has to point at | The callback must land on the passenger home page, because that is where the reference is read. Getting it wrong is silent otherwise. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
+| The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
+| The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
+
+### Verification
+`npm ci --legacy-peer-deps` · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 119/119 (12 files) · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No SQL, and no `types.ts` edit.** No new table, column or function: `start_payment`, `mark_payment_paid` and the provider-reference columns all exist from #30, and the hand-written types already cover them.
+- **The provider is still chosen server-side** from the `PAYMENT_PROVIDER` secret, not per operator. The issue's comment suggests reading `payment_provider` from `operator_settings`, but that column does not exist and adding it is the per-operator-provider decision in #29 (owner's call, plus #45 for the second adapter). The Edge Function echoes `provider` back, so a per-operator choice later changes no client code.
+- **A cancelled checkout and a webhook still in flight are reported the same way**, because the browser genuinely cannot tell them apart: Paystack returns the passenger to the same URL either way, and verifying the transaction means a server call. The message is true of both and invites another attempt. An explicit `?payment=cancelled` is honoured for a future adapter that sends one.
+- **No "Pay now" on a prepay ride with no fare yet** (`total_price` null — the route had no fare configured). The RPC refuses it and tells them to pay the driver, which the card already says.
+- **No receipt, and no refund.** Both belong with #32 and a provider refund call.
+
+---
+
+## 2026-09-28 — #41 Database tests: migration replay + RLS rules in CI
+branch `test/rls-db-tests` → `Dev` · closes #41 · migration `20260928170000_fix_fare_adjustment_insert_policy.sql`
+
+**Why:** the security model is the part of this app that has actually broken — twice. Both times a person found it by reading the SQL. Nothing verified that a passenger cannot read another passenger's ride, or set their own price, or that an operator is confined to their own routes. These rules now run on every pull request.
+
+### Added
+| Item | Why |
+|---|---|
+| `supabase/tests/00_shim.sql` — the roles, `auth` schema, `auth.uid()`, Realtime publication and **default privileges** a Supabase project provides | Lets the real migration files run unmodified against a bare Postgres. The default privileges matter: Supabase grants the API roles broad table access and relies on RLS plus explicit `REVOKE`s, so without them the tests would exercise a stricter grant surface than production has. |
+| `supabase/tests/10_seed.sql` — two operators, two passengers, an admin, a route with stops and a fare | Users go in through `auth.users` so `handle_new_user` assigns roles exactly as a real sign-up does. Operator B exists so "not mine" is a real row, not an empty table. |
+| `supabase/tests/20_rls.sql` — **25 refusal assertions plus positive controls** | Passenger isolation (rides, profiles, the aggregated queue); cancel-only for passengers; the money columns are immutable to them; rides and bookings only through their RPCs; `create_booking` prices itself; operators scoped to their own routes, fares and requests; the dispatch state machine; fare corrections recorded and unforgeable; `has_role` does not reveal who the admins are; anonymous readers see nothing; admins see across operators. |
+| `tests.denied(stmt)` helper | Insists a statement failed **for a policy or guard reason** (42501 / P0001 / 23514 / 23505). A typo in a test raises `undefined_column` and fails loudly rather than looking like a pass — a test that passes for the wrong reason is worse than no test. |
+| `scripts/test-db.sh` and a `database` CI job on a `postgres:16` service | Applies the shim, then **every migration in filename order**, then the seed and tests. The replay is itself a test: the migration chain has to build the schema from nothing on every PR. |
+
+### Fixed
+| Item | Why |
+|---|---|
+| An operator could not correct the fare on a request nobody had confirmed yet (`20260928170000`) | **Found by these tests.** The INSERT policy on `ride_request_fare_adjustments` required `ride_requests.operator_id` to be the caller, but `dispatch_ride_request` writes that row once, at the end — so during the audit insert it is still NULL for an `awaiting` request, and the whole correction failed with "new row violates row-level security policy". That is the common case: an association increase is applied to rides that are still waiting. The policy now matches who may dispatch the request — the operator who has taken it, or the operator whose route it is. Shipped yesterday in #57; live for about a day. |
+
+### Verification
+`npm run lint` 0 errors · `npm run typecheck` clean · `npm test` 106/106 · `npm run build` OK · **`database` job green**: 17 migrations replayed from an empty database and all RLS assertions passed ([run 36447927622](https://github.com/vianneyKB/shuttle-sprite/actions/runs/36447927622)).
+
+### Not changed (deliberately)
+- **Plain plpgsql `ASSERT`, not pgTAP** as the issue title suggested. pgTAP needs an extension installed in the test database for no gain here; `ASSERT` fails with the assertion text and needs nothing. Noted so the deviation is explicit.
+- One case is asserted as a **no-op rather than a refusal**: an UPDATE whose `USING` clause hides the row changes zero rows instead of raising. That is correct Postgres behaviour and safe; the test asserts `row_count = 0` rather than pretending an error occurs.
+- Storage policies, Edge Function auth and the payment RPCs' own rules are not covered here — the Edge Functions have their own unit tests, and #40 (Playwright) covers the flows end to end.
+
+---
+
 ## 2026-09-28 — #57 Operator can correct the fare on a ride request (audited)
 branch `feat/fare-adjustments` → `Dev` · closes #57 · migration `20260928150000_ride_request_fare_adjustments.sql`
 
