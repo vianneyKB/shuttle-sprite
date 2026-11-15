@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/context/AuthContext";
-import type { OperatorSettings } from "@/types";
+import type { OperatorSettings, PaymentProvider } from "@/types";
 import { DEFAULT_CURRENCY, DEFAULT_TAX_RATE } from "@/lib/money";
 
 export type DbOperatorSettings = {
@@ -11,7 +11,30 @@ export type DbOperatorSettings = {
   tax_label: string;
   prices_include_tax: boolean;
   additional_stop_fee: number;
+  payment_provider: string | null;
 };
+
+/** The providers the Edge Functions have an adapter for; keep in step with them. */
+export const PAYMENT_PROVIDERS: { value: PaymentProvider; label: string; hint: string }[] = [
+  {
+    value: "paystack",
+    label: "Paystack",
+    hint: "Cards, EFT and mobile money across Africa. Settles in ZAR, NGN, GHS, KES.",
+  },
+  {
+    value: "stripe",
+    label: "Stripe",
+    hint: "Cards and wallets in 40+ countries. Settles where you hold a Stripe account.",
+  },
+];
+
+export const DEFAULT_PAYMENT_PROVIDER: PaymentProvider = "paystack";
+
+/** A row written before this column existed, or by a newer version, falls back. */
+const asPaymentProvider = (value: string | null | undefined): PaymentProvider =>
+  PAYMENT_PROVIDERS.some((p) => p.value === value)
+    ? (value as PaymentProvider)
+    : DEFAULT_PAYMENT_PROVIDER;
 
 export const mapOperatorSettings = (r: DbOperatorSettings): OperatorSettings => ({
   operatorId: r.operator_id,
@@ -20,6 +43,7 @@ export const mapOperatorSettings = (r: DbOperatorSettings): OperatorSettings => 
   taxLabel: r.tax_label,
   pricesIncludeTax: r.prices_include_tax,
   additionalStopFee: Number(r.additional_stop_fee),
+  paymentProvider: asPaymentProvider(r.payment_provider),
 });
 
 /** Matches the database defaults, used until the operator saves settings. */
@@ -30,6 +54,7 @@ export const defaultOperatorSettings = (operatorId: string): OperatorSettings =>
   taxLabel: "VAT",
   pricesIncludeTax: false,
   additionalStopFee: 15,
+  paymentProvider: DEFAULT_PAYMENT_PROVIDER,
 });
 
 export const useMyOperatorSettings = () => {
@@ -65,6 +90,7 @@ export const useUpsertOperatorSettings = () => {
           tax_label: input.taxLabel,
           prices_include_tax: input.pricesIncludeTax,
           additional_stop_fee: input.additionalStopFee,
+          payment_provider: input.paymentProvider,
         },
         { onConflict: "operator_id" }
       );

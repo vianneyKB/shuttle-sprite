@@ -2,8 +2,10 @@
  * The payment provider seam.
  *
  * `create-checkout-session` and `payment-webhook` only ever talk to this
- * interface, so adding Stripe (#45) means adding one file and one entry in
- * the registry — no caller changes, no SQL changes.
+ * interface: adding a provider means adding one file and one entry in the
+ * registry. A provider also declares which secrets it needs and which header
+ * carries its webhook signature, so neither function builds an env-var name
+ * out of a provider name.
  */
 
 export type PaymentTargetType = "booking" | "ride_request";
@@ -58,6 +60,15 @@ export type PaymentEvent =
 
 export interface PaymentProvider {
   readonly name: string;
+  /** Edge Function secret holding the API key used to create a checkout. */
+  readonly apiKeyEnv: string;
+  /**
+   * Edge Function secret the webhook signature is verified against. The same
+   * key as `apiKeyEnv` for Paystack; a separate endpoint secret for Stripe.
+   */
+  readonly webhookSecretEnv: string;
+  /** Request header carrying the signature; how a webhook is attributed. */
+  readonly signatureHeader: string;
   /** Create a hosted checkout and return its URL. */
   createCheckout(
     request: CheckoutRequest,
@@ -65,7 +76,7 @@ export interface PaymentProvider {
     fetchImpl?: typeof fetch,
   ): Promise<CheckoutSession>;
   /** True when the raw body really came from the provider. */
-  verifySignature(rawBody: string, headers: Headers, secretKey: string): Promise<boolean>;
+  verifySignature(rawBody: string, headers: Headers, webhookSecret: string): Promise<boolean>;
   /** Normalise a verified raw body into a PaymentEvent. */
   parseEvent(rawBody: string): PaymentEvent;
 }

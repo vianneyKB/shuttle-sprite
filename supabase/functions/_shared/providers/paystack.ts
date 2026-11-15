@@ -8,6 +8,7 @@
  * with HMAC-SHA512 over the *raw* body using the same secret key as the API.
  */
 
+import { equalsConstantTime, hexHmac } from "../crypto.ts";
 import { toMinorUnits } from "../money.ts";
 import type {
   CheckoutRequest,
@@ -44,21 +45,6 @@ export const buildInitializeBody = (request: CheckoutRequest): Record<string, un
   };
 };
 
-const hexHmacSha512 = async (secret: string, message: string): Promise<string> => {
-  const encoder = new TextEncoder();
-  const key = await crypto.subtle.importKey(
-    "raw",
-    encoder.encode(secret),
-    { name: "HMAC", hash: "SHA-512" },
-    false,
-    ["sign"],
-  );
-  const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(message));
-  return Array.from(new Uint8Array(signature))
-    .map((b) => b.toString(16).padStart(2, "0"))
-    .join("");
-};
-
 /** Paystack hands metadata back as an object, or as a JSON string. Take either. */
 const readMetadata = (raw: unknown): Record<string, unknown> => {
   if (typeof raw === "string") {
@@ -72,16 +58,12 @@ const readMetadata = (raw: unknown): Record<string, unknown> => {
   return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 };
 
-/** Constant-time compare so a wrong signature leaks nothing through timing. */
-const equalsConstantTime = (a: string, b: string): boolean => {
-  if (a.length !== b.length) return false;
-  let diff = 0;
-  for (let i = 0; i < a.length; i += 1) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
-  return diff === 0;
-};
-
 export const paystack: PaymentProvider = {
   name: "paystack",
+  // One key does both jobs at Paystack: it signs API calls and webhooks.
+  apiKeyEnv: "PAYSTACK_SECRET_KEY",
+  webhookSecretEnv: "PAYSTACK_SECRET_KEY",
+  signatureHeader: SIGNATURE_HEADER,
 
   async createCheckout(request, secretKey, fetchImpl = fetch): Promise<CheckoutSession> {
     if (!secretKey) throw new Error("PAYSTACK_SECRET_KEY is not configured");
@@ -116,7 +98,7 @@ export const paystack: PaymentProvider = {
     if (!secretKey) throw new Error("PAYSTACK_SECRET_KEY is not configured");
     const provided = headers.get(SIGNATURE_HEADER);
     if (!provided) return false;
-    return equalsConstantTime(provided, await hexHmacSha512(secretKey, rawBody));
+    return equalsConstantTime(provided, await hexHmac("SHA-512", secretKey, rawBody));
   },
 
   parseEvent(rawBody): PaymentEvent {
