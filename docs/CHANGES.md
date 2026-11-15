@@ -10,10 +10,6 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_vehicle_images_storage.sql`
 
 **Why:** the vehicle form asked an operator to paste an "Image URL", so every photo in the fleet lived on somebody else's host — a Facebook CDN link, a WhatsApp image, a free image host — and broke when that host did, with nobody to notice but the passenger looking at a blank card. Photos now go into a `vehicle-images` bucket this project owns. The bucket is public to read, because the listing is public and a passenger browsing shuttles is often not signed in yet; writing is confined to operators, each under a folder named after their own user id, so one operator cannot overwrite or delete another's photos. Size and type are capped on the bucket itself — the check in the browser is a courtesy, not the control.
-## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
-branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
-
-**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
 
 ### Added
 | Item | Why |
@@ -29,6 +25,32 @@ branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_b
 | Item | Why |
 |---|---|
 | The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `VehicleManagement` holds `image` in state (like `features`) rather than in the form schema | The value now comes from an upload, not from typing, so it is not something the resolver validates. |
+| Closing the vehicle dialog cleans up | Photos uploaded during the edit that the saved row does not reference — a replacement, or an upload then Cancel — are deleted from the bucket, as is the photo a saved vehicle has moved off. Deleting a vehicle deletes its photo. Without this, every replaced photo would stay in the bucket forever with no screen that could find it. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **177/177** (16 of them new here) · `npm run build` OK · migration replay + RLS suite green against a throwaway `postgres:16`: 22 migrations applied from an empty database, every assertion passed, and the bucket row and all four policies verified present afterwards.
+
+### Not changed (deliberately)
+- **`src/integrations/supabase/types.ts` is untouched.** The generated types cover the `public` schema; this change adds no table, column or function there — Storage is reached through `supabase.storage`, which is typed by the client library.
+- **No image resizing or transformation.** Supabase's image transformation is a paid add-on; the 5 MB cap keeps the listing usable without it. Worth revisiting if operators start uploading phone-camera originals.
+- **Existing third-party image URLs are left as they are.** They still render, and the field lets an operator replace one with an upload when they next edit the vehicle. Nothing deletes a URL this app does not host.
+- Noticed while in the file, left alone: the operator fleet card prints `${v.pricePerHour}` with a hard-coded `$` instead of `formatMoney`, and the availability badge only renders when a vehicle has a photo. Neither is this issue.
+
+---
+
+## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
+branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
+
+**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
+
+### Added
+| Item | Why |
+|---|---|
 | `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
 | `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
 | `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
@@ -70,17 +92,6 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 ### Changed
 | Item | Why |
 |---|---|
-| `VehicleManagement` holds `image` in state (like `features`) rather than in the form schema | The value now comes from an upload, not from typing, so it is not something the resolver validates. |
-| Closing the vehicle dialog cleans up | Photos uploaded during the edit that the saved row does not reference — a replacement, or an upload then Cancel — are deleted from the bucket, as is the photo a saved vehicle has moved off. Deleting a vehicle deletes its photo. Without this, every replaced photo would stay in the bucket forever with no screen that could find it. |
-
-### Verification
-`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **122/122** (16 new) · `npm run build` OK · migration replay + RLS suite green against a throwaway `postgres:16`: 20 migrations applied from an empty database, every assertion passed, and the bucket row and all four policies verified present afterwards.
-
-### Not changed (deliberately)
-- **`src/integrations/supabase/types.ts` is untouched.** The generated types cover the `public` schema; this change adds no table, column or function there — Storage is reached through `supabase.storage`, which is typed by the client library.
-- **No image resizing or transformation.** Supabase's image transformation is a paid add-on; the 5 MB cap keeps the listing usable without it. Worth revisiting if operators start uploading phone-camera originals.
-- **Existing third-party image URLs are left as they are.** They still render, and the field lets an operator replace one with an upload when they next edit the vehicle. Nothing deletes a URL this app does not host.
-- Noticed while in the file, left alone: the operator fleet card prints `${v.pricePerHour}` with a hard-coded `$` instead of `formatMoney`, and the availability badge only renders when a vehicle has a photo. Neither is this issue.
 | `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
 | The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
 | The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
