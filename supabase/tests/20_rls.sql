@@ -295,6 +295,80 @@ begin;
 rollback;
 
 -- ---------------------------------------------------------
+-- Vehicle images (storage): public read, operator write, own prefix only
+-- ---------------------------------------------------------
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'OP_A', true);
+  -- Operator A may write under their own uuid prefix.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  do $$
+  begin
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'the operator sees their own object';
+  end $$;
+  -- But not under anyone else's, and not into a bucket of their own making.
+  select tests.denied(format(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', %L)',
+    :'OP_B' || '/quantum.jpg'));
+  select tests.denied(
+    'insert into storage.buckets (id, name) values (''mine'', ''mine'')');
+rollback;
+
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'PAX1', true);
+  -- A passenger is not an operator, so their own prefix does not help them.
+  select tests.denied(format(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', %L)',
+    :'PAX1' || '/anything.jpg'));
+rollback;
+
+begin;
+  -- Operator A's photo, written by the platform the way an upload would.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'OP_B', true);
+  do $$
+  declare v_n integer;
+  begin
+    -- Operator B can read it — the bucket is public, the listing is public.
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'vehicle images are readable by anyone';
+    -- Deleting it is a no-op rather than an error: the USING clause hides the
+    -- row from the DELETE, so nothing matches.
+    delete from storage.objects where bucket_id = 'vehicle-images';
+    get diagnostics v_n = row_count;
+    assert v_n = 0, 'an operator must not delete another operator''s photo';
+    update storage.objects set name = '22222222-2222-2222-2222-222222222222/stolen.jpg'
+    where bucket_id = 'vehicle-images';
+    get diagnostics v_n = row_count;
+    assert v_n = 0, 'nor move it into their own folder';
+  end $$;
+rollback;
+
+begin;
+  set local role anon;
+  -- Anonymous writers have the grant but match no INSERT policy.
+  select tests.denied(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', ''x/y.jpg'')');
+rollback;
+
+begin;
+  -- A signed-out passenger browsing the fleet still has to see the photos.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  set local role anon;
+  do $$
+  begin
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'anon must be able to read vehicle images';
+  end $$;
+rollback;
+
+-- ---------------------------------------------------------
 -- Admins see across operators
 -- ---------------------------------------------------------
 begin;
