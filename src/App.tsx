@@ -16,6 +16,7 @@ import { PageFallback } from "./components/layout/LazyFallback";
  */
 const Index = lazy(() => import("./pages/Index"));
 const OperatorPage = lazy(() => import("./pages/Operator"));
+const AdminPage = lazy(() => import("./pages/Admin"));
 const Auth = lazy(() => import("./pages/Auth"));
 const ProfilePage = lazy(() => import("./pages/Profile"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
@@ -59,6 +60,14 @@ const App = () => (
                 element={
                   <RoleRoute allow={["operator", "admin"]}>
                     <OperatorPage />
+                  </RoleRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <RoleRoute allow={["admin"]}>
+                    <AdminPage />
                   </RoleRoute>
                 }
               />

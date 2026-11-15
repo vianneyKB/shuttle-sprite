@@ -19,10 +19,27 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('55555555-5555-5555-5555-555555555555', 'admin@example.com',
    '{"display_name":"Admin","phone":"0855550000","role":"customer"}');
 
--- handle_new_user refuses to grant admin from client metadata (by design),
--- so the platform grants it out of band.
-insert into public.user_roles (user_id, role)
-values ('55555555-5555-5555-5555-555555555555', 'admin');
+-- handle_new_user grants neither 'admin' nor (since #38) 'operator' from
+-- client metadata, so the platform grants those out of band. Operator A and
+-- Operator B are approved operators; their applications are approved too, so
+-- the pending list in the admin tests contains only the account below that is
+-- actually waiting.
+insert into public.user_roles (user_id, role) values
+  ('55555555-5555-5555-5555-555555555555', 'admin'),
+  ('11111111-1111-1111-1111-111111111111', 'operator'),
+  ('22222222-2222-2222-2222-222222222222', 'operator');
+
+update public.operator_applications
+set status = 'approved', decided_at = now(),
+    decided_by = '55555555-5555-5555-5555-555555555555'
+where user_id in ('11111111-1111-1111-1111-111111111111',
+                  '22222222-2222-2222-2222-222222222222');
+
+-- One account still waiting on a decision, so the admin tests have a real
+-- pending application and the applicant has one row they may read.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('66666666-6666-6666-6666-666666666666', 'applicant@example.com',
+   '{"display_name":"Applicant","phone":"0866660000","role":"operator"}');
 
 -- Operator A: a vehicle, a route with two stops, and a fare.
 insert into public.vehicles (id, operator_id, make, model, year, capacity,

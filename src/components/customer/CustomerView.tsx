@@ -6,6 +6,7 @@ import { VehicleList } from "./VehicleList";
 import { MyRides } from "./MyRides";
 import { BookingModal } from "./BookingModal";
 import { useAppContext } from "@/context/AppContext";
+import { OperatorApplicationNotice } from "./OperatorApplicationNotice";
 import { usePaymentReturn } from "@/hooks/usePayments";
 import { PanelFallback } from "@/components/layout/LazyFallback";
 
@@ -31,6 +32,8 @@ export const CustomerView: React.FC = () => {
           Explore routes on the map, book fleet vehicles, and track your rides.
         </p>
       </header>
+
+      <OperatorApplicationNotice />
 
       <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6 h-auto min-h-11">
