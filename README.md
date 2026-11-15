@@ -7,10 +7,11 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | Area | Capability |
 |------|------------|
 | **Passenger** | Interactive route map (Leaflet), ride requests between stops, fleet booking, **My rides** (requests + bookings) |
-| **Passenger** | Payment choice: **cash on board** or **pay in advance** |
+| **Passenger** | Payment choice: **cash on board** or **pay in advance**; **Pay now** on any unpaid prepay ride or booking |
 | **Operator** | Route CRUD with ordered stops (LineString geometry); stop names prefilled from OpenStreetMap (Nominatim reverse geocoding) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
+| **Operator** | **Complete settles the fare** — a prepay ride or booking cannot be completed while unpaid; completing a cash one records the fare as collected |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
 | **Operator** | **Payment provider** — Paystack or Stripe, per operator; passengers are sent to whichever checkout their operator settles with |
 | **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
@@ -98,6 +99,20 @@ fallback for an operator with no settings row.
 Both webhooks use the one `payment-webhook` URL: Paystack signs with
 `x-paystack-signature` and Stripe with `stripe-signature`, which is how the
 function knows whose secret to verify against.
+
+**Pay now** appears on **My rides** for any prepay ride or booking still marked
+`pending` with an amount owing. It calls `create-checkout-session` and sends the
+passenger to the provider's page. The provider returns them to
+`PAYMENT_CALLBACK_URL` with the reference in the query string; the app reads it,
+clears it from the address bar, checks the row's `payment_status` (re-checking
+for a few seconds, because the webhook can land after the redirect) and toasts
+the result. So `PAYMENT_CALLBACK_URL` must point at the app's passenger home —
+the page that renders **My rides** — not at an Edge Function.
+
+Cash is settled on board instead: completing a cash ride or booking sets
+`payment_status = 'paid'`. Completing a **prepay** row while it is still unpaid
+is refused by `settle_payment_on_complete()` on both tables, so neither the
+dispatch RPC nor a raw `UPDATE` can close a fare nobody paid.
 
 ### Deploy and configure
 
