@@ -9,7 +9,7 @@ import type { PaymentMethod, RouteStop, ShuttleRoute } from "@/types";
 import { useCreateRideRequest } from "@/hooks/useRideRequests";
 import { useMyProfile, useUpdateMyProfile } from "@/hooks/useProfile";
 import { useRideFareQuote } from "@/hooks/useRouteFares";
-import { formatMoney } from "@/lib/money";
+import { rideQuoteRows } from "@/lib/priceBreakdown";
 import { isValidPhone } from "@/lib/profile";
 import { earliestScheduleTime, fromLocalInputValue, toLocalInputValue } from "@/lib/schedule";
 import { toast } from "sonner";
@@ -52,6 +52,10 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
     const dest = destStops.find((s) => s.id === destinationStopId);
     if (!dest) {
       toast.error("Select a destination stop");
+      return;
+    }
+    if (!Number.isInteger(passengers) || passengers < 1 || passengers > 50) {
+      toast.error("Passengers must be between 1 and 50");
       return;
     }
     if (needsPhone && !isValidPhone(phone)) {
@@ -107,7 +111,7 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
         <fieldset className="space-y-2 border-0 p-0">
           <Label>Destination</Label>
           <Select value={destinationStopId} onValueChange={setDestinationStopId}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Destination">
               <SelectValue placeholder="Where are you going?" />
             </SelectTrigger>
             <SelectContent>
@@ -194,7 +198,7 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
         <fieldset className="space-y-2 border-0 p-0">
           <Label>Payment</Label>
           <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as PaymentMethod)}>
-            <SelectTrigger>
+            <SelectTrigger aria-label="Payment">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -216,20 +220,20 @@ export const RideRequestModal: React.FC<RideRequestModalProps> = ({
             <p className="flex items-center gap-2 text-secondary-600"><Loader2 className="w-4 h-4 animate-spin" /> Getting fare…</p>
           ) : quote.data && quote.data.total != null ? (
             <>
-              <p className="flex justify-between">
-                <span>{passengers} × {formatMoney(quote.data.farePerSeat ?? 0, quote.data.currency)} per seat</span>
-                <span>{formatMoney(quote.data.subtotal ?? 0, quote.data.currency)}</span>
-              </p>
-              {quote.data.taxAmount != null && quote.data.taxAmount > 0 && (
-                <p className="flex justify-between text-secondary-600">
-                  <span>{quote.data.taxLabel} ({quote.data.taxRate}%){quote.data.pricesIncludeTax ? " incl." : ""}</span>
-                  <span>{formatMoney(quote.data.taxAmount, quote.data.currency)}</span>
+              {rideQuoteRows(quote.data).map((row) => (
+                <p
+                  key={row.id}
+                  className={[
+                    "flex justify-between",
+                    row.id === "tax" ? "text-secondary-600" : "",
+                    row.rule ? "pt-1 border-t border-primary-200 mt-1" : "",
+                    row.strong ? "font-semibold text-base" : "",
+                  ].filter(Boolean).join(" ")}
+                >
+                  <span>{row.label}</span>
+                  <span>{row.value}</span>
                 </p>
-              )}
-              <p className="flex justify-between font-semibold text-base pt-1 border-t border-primary-200 mt-1">
-                <span>Fare</span>
-                <span>{formatMoney(quote.data.total, quote.data.currency)}</span>
-              </p>
+              ))}
             </>
           ) : (
             <p className="text-secondary-600">No fare set for this trip — pay the driver on board.</p>

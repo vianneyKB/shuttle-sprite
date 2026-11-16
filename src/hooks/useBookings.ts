@@ -80,7 +80,7 @@ export const mapBooking = (b: DbBooking, stops: DbStop[]): Booking => ({
 });
 
 /** price_breakdown from older rows lacks the currency/tax keys; fill them from the row. */
-const normaliseBreakdown = (b: DbBooking): PriceBreakdown => {
+export const normaliseBreakdown = (b: DbBooking): PriceBreakdown => {
   const raw = (b.price_breakdown ?? {}) as Partial<PriceBreakdown>;
   const total = Number(b.total_price);
   return {
@@ -145,6 +145,27 @@ export const useOperatorBookings = () => {
         .from("bookings")
         .select("*")
         .in("vehicle_id", vehicleIds)
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return fetchBookingsWithStops((data ?? []) as DbBooking[]);
+    },
+  });
+};
+
+/**
+ * Every booking on the platform, newest first. `bookings_select` returns rows
+ * beyond your own and your own fleet's only to an admin, so this is empty for
+ * anyone else even if the query runs.
+ */
+export const useAllBookings = () => {
+  const { user, isAdmin } = useAuth();
+  return useQuery({
+    queryKey: ["bookings", "all"],
+    enabled: !!user && isAdmin,
+    queryFn: async (): Promise<Booking[]> => {
+      const { data, error } = await supabase
+        .from("bookings")
+        .select("*")
         .order("created_at", { ascending: false });
       if (error) throw error;
       return fetchBookingsWithStops((data ?? []) as DbBooking[]);
