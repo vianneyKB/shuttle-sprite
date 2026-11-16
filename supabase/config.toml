@@ -7,3 +7,17 @@ verify_jwt = false
 # The passenger's JWT is what proves they own the booking.
 [functions.create-checkout-session]
 verify_jwt = true
+
+# Local stack only (`supabase start`), for the Playwright journey in e2e/.
+# These are the CLI's own defaults, pinned so the test does not depend on them:
+# sign-up has to return a session, and the dev server's origin has to be an
+# allowed redirect. The hosted project's auth settings are managed in the
+# dashboard.
+[auth]
+site_url = "http://127.0.0.1:8080"
+additional_redirect_urls = ["http://localhost:8080", "http://127.0.0.1:8080"]
+enable_signup = true
+
+[auth.email]
+enable_signup = true
+enable_confirmations = false
