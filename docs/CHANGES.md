@@ -5,6 +5,10 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 
 ---
 
+## 2026-11-10 — #39 Unit tests: pricing parity, role gating, ride request flow
+branch `routine/issue-39` → `Dev` · closes #39 · no migration (tests, plus the two client guards they exposed)
+
+**Why:** the suite had 106 tests and not one of them rendered a component. Everything covered was a pure function — mappers, money, schedules — so the three places where a wrong answer actually reaches a passenger were untested: who gets past the route guards, what the ride request form refuses to send, and whether the price on screen is the price Postgres computed. The last one has no type safety at all behind it: both pricing functions return `jsonb`, so a key renamed in a migration would reach the browser as `undefined` and render as a zero fare. That is now a failing test rather than a support call.
 ## 2026-11-09 — #38 Admin view: approve operators, see all bookings and requests
 branch `routine/issue-38` → `Dev` · closes #38 · migration `20261109040509_admin_operator_applications.sql`
 
@@ -13,6 +17,19 @@ branch `routine/issue-38` → `Dev` · closes #38 · migration `20261109040509_a
 ### Added
 | Item | Why |
 |---|---|
+| `src/components/auth/__tests__/routeGuards.test.tsx` — 9 tests over `ProtectedRoute` and `RoleRoute` with a mocked `useAuth` | The refusals are the point: a signed-out visitor goes to `/auth`, a passenger with no operator role goes to `/` (not to a sign-in page they are already past), and an empty role list is not a pass. Both `loading` branches are pinned separately, because a guard that redirects while the session is still resolving signs a legitimate operator out on every page refresh — roles arrive after the user does. |
+| `src/components/map/__tests__/RideRequestModal.test.tsx` — 10 tests driving the real form through `user-event` | Each assertion checks the passenger is told *and* that `create_ride_request` was never called: no destination, an empty seat count, 51 seats, a missing mobile number. Also that the origin is never offered as a destination, and that a successful submit sends the stop ids the server expects. |
+| `src/lib/priceBreakdown.ts` — `bookingBreakdownRows`, `rideQuoteRows`, `bookingBreakdownReconciles`, `rideQuoteReconciles`, `round2` | The pricing summaries were arithmetic inside JSX (`breakdown.hourlyRate * breakdown.duration`), which is the one kind of code the suite could not reach. The rows are now data — id, label, value, and flags for the rule and the emphasis — so what a passenger reads can be asserted directly. The two `*Reconciles` helpers mirror the SQL's own arithmetic and pin the relationship the rows assume: line items × the recurring multiplier reach the subtotal (or the total, for a tax-inclusive operator), and subtotal + tax is what is paid. |
+| `src/lib/__tests__/priceBreakdown.test.ts` — 20 tests | Both tax directions, extra stops, a recurring booking, a zero-tax operator, a GBP operator, and an unpriced route rendering no rows at all rather than a free ride. Money is asserted through `formatMoney`, not against a literal `"R 400,00"`, so the tests do not pin the test runner's locale. |
+| `src/lib/__tests__/pricingParity.test.ts` — 8 tests that read the keys out of `supabase/migrations/` | Finds the last migration defining `calculate_booking_price()` / `quote_ride_fare()`, walks its `jsonb_build_object(...)` calls taking the even-position literals as keys, and compares that set against what `normaliseBreakdown` / `mapQuote` produce. A key added in SQL and not mapped fails; so does a key the mapper expects and SQL no longer sends. Verified by renaming `taxLabel` in the mapper and watching it fail. The extractor has two tests of its own, so a parse bug cannot pass as parity. |
+| `@testing-library/user-event` (dev) and jsdom stand-ins for `hasPointerCapture`, `scrollIntoView` and `ResizeObserver` in `src/test/setup.ts` | Radix calls into Pointer Events and layout when a Select opens; without the stand-ins a component test fails inside Radix instead of on its own assertion. Guarded on `typeof Element` because the Edge Function tests run under the `node` environment. |
+
+### Fixed
+| Item | Why |
+|---|---|
+| `RideRequestModal` now refuses a seat count outside 1–50 before submitting | **Found by writing the test.** The field has `min={1}`, which a browser only enforces on native form submit — this is a click handler, and `Number("")` is `0`. Clearing the field and submitting sent `passengers: 0` to `create_ride_request`, which refused it with a raw Postgres message. The client now mirrors the RPC's own 1–50 check and says so in the same words. |
+| The fare row reads the seat count off the quote, not off the form | The row rendered `{passengers} × …` from component state beside a subtotal the server had priced for a possibly different seat count. The two can only disagree briefly, but when they do the row contradicts the number under it. `quote.data.passengers` is the count that was actually priced. |
+| Both `Select` triggers in the request form have an `aria-label` | They had a visible `<Label>` with no `htmlFor` and no `id` to point at, so the comboboxes were unnamed to a screen reader — and unaddressable from a test. |
 | `operator_applications` — one row per account that asked to operate, with `requested_at`, the decision, who made it and the reason | `user_id` is unique, which is what makes the sign-up insert and the backfill idempotent. Two check constraints keep the row honest: a pending row carries no decision, and a rejection must carry a note, because a refusal the applicant cannot read a reason for is not a decision. |
 | `review_operator_application(_user_id, _approve, _note)` | SECURITY DEFINER for the same reason `create_booking` is: it is the single path, and it stamps the application and inserts into `user_roles` as one unit, so an approved application and a granted role cannot drift apart. The admin check is explicit and first. Refuses a rejection without a reason, and refuses to re-decide an application that was already decided. |
 | `/admin`, behind `RoleRoute allow={['admin']}` — tabs for **Operators**, **Bookings** and **Ride requests** | The applications tab splits waiting (oldest first, so the longest wait is at the top) from approved and rejected, with approve and a reject dialog. The other two are read-only tables of every booking and every ride request, newest first. |
@@ -195,6 +212,17 @@ branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and b
 ### Changed
 | Item | Why |
 |---|---|
+| `BookingModal` and `RideRequestModal` render their pricing summaries from the shared row builders | One source of truth for what the summary contains, and the same classes as before — the rule and the bold total now come from flags on the row rather than from duplicated conditionals. No visual change intended. |
+| `normaliseBreakdown` exported from `src/hooks/useBookings.ts` | The parity test needs the mapper it is checking. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **153/153** (106 → 153, +47) · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No E2E and no new SQL.** The browser-level flow is #40 (Playwright) and the database rules are #41, already merged; this issue is the Vitest layer between them.
+- The bundle is still one 1 MB chunk — the build's own warning. That is #35, which has an open PR.
+- `bookingBreakdownReconciles` is **not** called at runtime. It exists to pin the arithmetic the display assumes; making it a render-time assertion would mean deciding what to show a passenger when the server's own numbers disagree, which is a product question, not a test one.
+- The "no fare" branch of `quote_ride_fare()` omits `pricesIncludeTax` where the priced branch includes it. Harmless — `mapQuote` defaults it to `false` and nothing is displayed without a fare — and the parity test compares against the union of the branches, so it does not fail on it. Worth tidying in whichever migration next touches that function.
 | Reported URLs are stripped of query string, hash and credentials | **Privacy.** Supabase recovery links carry `access_token` in the hash, and `/reset-password` is a page that can crash. A crash report is not a place to leak a session token. Only the path, the error and the component stack are sent; no user id, email or mobile number. |
 | At most 20 events per page load, and the same error from the same frame only once | A render loop would otherwise send thousands of identical events. Dedupe is on message plus the first stack frame. |
 | Every send failure is swallowed (`fetch` is fire-and-forget with `keepalive`) | A reporter that throws into the page it is reporting on is worse than no reporter. `keepalive` so the last event still leaves a tab that is closing. |
