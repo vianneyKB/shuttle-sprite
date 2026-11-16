@@ -7,11 +7,14 @@ ShuttleBook is a geospatial shuttle platform: operators define routes and stops 
 | Area | Capability |
 |------|------------|
 | **Passenger** | Interactive route map (Leaflet), ride requests between stops, fleet booking, **My rides** (requests + bookings) |
-| **Passenger** | Payment choice: **cash on board** or **pay in advance** |
+| **Passenger** | Payment choice: **cash on board** or **pay in advance**; **Pay now** on any unpaid prepay ride or booking |
 | **Operator** | Route CRUD with ordered stops (LineString geometry); stop names prefilled from OpenStreetMap (Nominatim reverse geocoding) |
 | **Operator** | **Passenger queue** — awaiting passengers grouped by origin → destination |
 | **Operator** | Fleet management, booking workflow, dashboard stats |
+| **Operator** | **Complete settles the fare** — a prepay ride or booking cannot be completed while unpaid; completing a cash one records the fare as collected |
 | **Operator** | **Pricing & tax settings** — currency (ISO 4217), tax rate/label, tax-inclusive pricing, per-stop fee; all snapshotted onto each booking |
+| **Admin** | **Operator approval** — sign-up files an application, an admin grants the operator role; read-only view of every booking and ride request |
+| **Operator** | **Payment provider** — Paystack or Stripe, per operator; passengers are sent to whichever checkout their operator settles with |
 | **Backend** | Supabase Auth, RLS, `create_booking` + `calculate_booking_price` RPCs (server-side pricing), `get_passenger_queue` RPC |
 
 ## Tech stack
@@ -41,6 +44,20 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | Supabase anon key |
 | `VITE_NOMINATIM_EMAIL` | Optional. Contact address sent with each reverse-geocode lookup, as the [Nominatim usage policy](https://operations.osmfoundation.org/policies/nominatim/) asks |
 | `VITE_NOMINATIM_URL` | Optional. Own Nominatim reverse endpoint; defaults to `https://nominatim.openstreetmap.org/reverse` |
+| `VITE_SENTRY_DSN` | Optional. Sentry DSN for crash reporting. Unset (the default) means nothing is reported and no requests are made |
+| `VITE_SENTRY_ENVIRONMENT` | Optional. Label on reported events; defaults to the Vite mode |
+| `VITE_SENTRY_RELEASE` | Optional. Version reported events are tagged with, e.g. the commit sha |
+
+### Error reporting
+
+A top-level error boundary (`src/components/layout/ErrorBoundary.tsx`) catches render
+errors and shows a fallback with a Reload button rather than a blank screen. Crashes,
+uncaught errors and unhandled rejections go to Sentry when `VITE_SENTRY_DSN` is set;
+with no DSN the reporter is inert.
+
+Reports are posted straight to Sentry's envelope endpoint (`src/lib/errorReporting.ts`),
+so there is no SDK in the bundle. Query strings and hashes are stripped from reported
+URLs — Supabase recovery links carry access tokens there — and no user identity is sent.
 
 ## Routes
 
@@ -49,16 +66,28 @@ Apply **all** SQL migrations in `supabase/migrations/` to your Supabase project 
 | `/` | Authenticated | Passenger home (map, fleet, my rides) |
 | `/profile` | Authenticated | Your name and mobile number |
 | `/operator` | Operator or admin | Operator dashboard |
+| `/admin` | Admin | Operator applications, every booking, every ride request |
 | `/vendor` | — | Redirects to `/operator` |
 | `/auth` | Public | Sign in / sign up |
 
 Sign up as **Passenger** or **Operator**. Operators manage routes, fleet, bookings, and the passenger queue.
+
+Choosing **Operator** at sign-up files an application rather than granting the role: the account
+starts as a working passenger account and an admin approves it at `/admin`. The `admin` role is
+not self-serve either — grant the first one directly in the database:
+
+```sql
+insert into public.user_roles (user_id, role)
+values ('<auth.users.id>', 'admin')
+on conflict do nothing;
+```
 
 ## Project layout
 
 ```
 src/
   components/
+    layout/       PageShell, Header, LazyFallback (code-split placeholders)
     map/          RouteMap, RideRequestModal
     customer/     RoutesMapPanel, MyRides, fleet booking
     operator/     RouteManagement, PassengerQueue, dashboard
@@ -73,15 +102,44 @@ supabase/functions/
 ## Payments (Edge Functions)
 
 Prepay bookings and ride requests are paid on a provider-hosted checkout page.
-**Paystack** is the only adapter today; Stripe drops into
-`supabase/functions/_shared/providers/` without changing either function.
+**Paystack** and **Stripe** both have adapters in
+`supabase/functions/_shared/providers/`; a third drops in there without
+changing either function.
 
 | Function | Auth | What it does |
 |----------|------|--------------|
-| `create-checkout-session` | Passenger JWT | Verifies the caller owns the booking / ride request and still owes money, reads the amount **from the database**, and returns the provider's checkout URL. |
-| `payment-webhook` | Provider signature (`verify_jwt = false`) | Verifies HMAC over the raw body, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
+| `create-checkout-session` | Passenger JWT | Verifies the caller owns the booking / ride request and still owes money, reads the amount **and the provider** from the database, and returns that provider's checkout URL. |
+| `payment-webhook` | Provider signature (`verify_jwt = false`) | Attributes the call by its signature header, verifies the HMAC over the raw body against that provider's secret, then sets `payment_status = 'paid'`. Idempotent and amount-checked. |
 
-The client never sends an amount: it posts `{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+The client never sends an amount, and never names a provider: it posts
+`{ "targetType": "booking" | "ride_request", "targetId": "<uuid>" }`.
+
+### Who takes the card
+
+Each operator picks their own checkout on the operator **Pricing** tab, stored
+as `operator_settings.payment_provider`. `start_payment()`
+resolves it from the operator who owns the vehicle (bookings) or the route
+(ride requests), so one deployment can serve a Paystack operator in
+Johannesburg and a Stripe operator in Lisbon. `PAYMENT_PROVIDER` is only the
+fallback for an operator with no settings row.
+
+Both webhooks use the one `payment-webhook` URL: Paystack signs with
+`x-paystack-signature` and Stripe with `stripe-signature`, which is how the
+function knows whose secret to verify against.
+
+**Pay now** appears on **My rides** for any prepay ride or booking still marked
+`pending` with an amount owing. It calls `create-checkout-session` and sends the
+passenger to the provider's page. The provider returns them to
+`PAYMENT_CALLBACK_URL` with the reference in the query string; the app reads it,
+clears it from the address bar, checks the row's `payment_status` (re-checking
+for a few seconds, because the webhook can land after the redirect) and toasts
+the result. So `PAYMENT_CALLBACK_URL` must point at the app's passenger home —
+the page that renders **My rides** — not at an Edge Function.
+
+Cash is settled on board instead: completing a cash ride or booking sets
+`payment_status = 'paid'`. Completing a **prepay** row while it is still unpaid
+is refused by `settle_payment_on_complete()` on both tables, so neither the
+dispatch RPC nor a raw `UPDATE` can close a fare nobody paid.
 
 ### Deploy and configure
 
@@ -89,20 +147,33 @@ The client never sends an amount: it posts `{ "targetType": "booking" | "ride_re
 supabase functions deploy create-checkout-session
 supabase functions deploy payment-webhook
 
+# Paystack operators
 supabase secrets set PAYSTACK_SECRET_KEY=sk_test_xxx
+# Stripe operators
+supabase secrets set STRIPE_SECRET_KEY=sk_test_xxx
+supabase secrets set STRIPE_WEBHOOK_SECRET=whsec_xxx
+
 supabase secrets set PAYMENT_CALLBACK_URL=https://<user>.github.io/shuttle-sprite/
-# optional; defaults to paystack
+# optional; the fallback for an operator with no settings row
 supabase secrets set PAYMENT_PROVIDER=paystack
 ```
 
-Then add the webhook URL in the Paystack dashboard (**Settings → API Keys &
-Webhooks**): `https://<project-ref>.functions.supabase.co/payment-webhook`.
+Set only the secrets for the providers your operators actually use: a provider
+with no key is refused at checkout and never silently swapped.
+
+Then register the same URL —
+`https://<project-ref>.functions.supabase.co/payment-webhook` — in each
+dashboard you use: Paystack under **Settings → API Keys & Webhooks**, Stripe
+under **Developers → Webhooks**, subscribed to
+`checkout.session.completed` and `checkout.session.async_payment_succeeded`.
 
 | Secret | Where | Description |
 |--------|-------|-------------|
 | `PAYSTACK_SECRET_KEY` | Supabase Edge Function secret | Signs API calls and verifies webhook signatures. Use a `sk_test_` key until go-live. |
+| `STRIPE_SECRET_KEY` | Supabase Edge Function secret | Creates Checkout Sessions. `sk_test_…` until go-live. |
+| `STRIPE_WEBHOOK_SECRET` | Supabase Edge Function secret | The endpoint signing secret (`whsec_…`) Stripe shows when you add the webhook. Separate from the API key, and required for Stripe webhooks to be accepted. |
 | `PAYMENT_CALLBACK_URL` | Supabase Edge Function secret | Where the provider returns the passenger after paying. Server-side only, so a caller cannot redirect elsewhere. |
-| `PAYMENT_PROVIDER` | Supabase Edge Function secret (optional) | Which adapter to use; `paystack` by default. |
+| `PAYMENT_PROVIDER` | Supabase Edge Function secret (optional) | Fallback provider for an operator with no settings row; `paystack` by default. |
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` are injected
 by the platform — do not set them yourself.
@@ -150,6 +221,29 @@ needs a Supabase stack and a browser, which is minutes rather than seconds.
 GitHub only offers `workflow_dispatch` for workflows already on the default
 branch, so until `e2e.yml` has reached `main` the journey can only be run
 locally; after that, **Actions → E2E → Run workflow** takes any branch.
+| `npm run check:bundle` | Initial-JS budget for the last `npm run build` (CI fails over it) |
+| `npm run preview` | Preview the production build locally |
+| `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
+
+## Bundle size
+
+Every page is a separate chunk (`React.lazy` in `src/App.tsx`), and so are both
+maps — Leaflet is about a third of the JavaScript in this app and only the
+routes map and the stop editor need it. A passenger therefore never downloads
+the operator dashboard, and nobody downloads Leaflet before opening a map.
+
+The first load is **~165 kB gzipped** (561 kB raw) across six chunks: React,
+Supabase, a shared `vendor` chunk, and the entry. `npm run check:bundle` reads
+`dist/index.html`, adds up the entry script and every `modulepreload` beside it,
+and fails if the total passes 200 kB gzipped — so a stray top-level import that
+drags a page's worth of code into the entry is caught in CI rather than on a
+phone. Vendor grouping is `build.rolldownOptions.output.codeSplitting` in
+`vite.config.ts`; the groups are tagged `$initial` so they only ever capture
+modules the entry already loads.
+
+When you add a heavy dependency that one screen needs, reach for `React.lazy`
+and a `PanelFallback` from `src/components/layout/LazyFallback.tsx` rather than
+raising the budget.
 
 ## Deploy
 

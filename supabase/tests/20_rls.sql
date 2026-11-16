@@ -15,6 +15,7 @@
 \set PAX1 '33333333-3333-3333-3333-333333333333'
 \set PAX2 '44444444-4444-4444-4444-444444444444'
 \set ADMIN '55555555-5555-5555-5555-555555555555'
+\set APPLICANT '66666666-6666-6666-6666-666666666666'
 \set ROUTE_A 'a2000000-0000-0000-0000-000000000001'
 \set STOP_A1 'a3000000-0000-0000-0000-000000000001'
 \set STOP_A2 'a3000000-0000-0000-0000-000000000002'
@@ -262,6 +263,117 @@ begin;
 rollback;
 
 -- ---------------------------------------------------------
+-- #38  Operating is granted, never taken
+-- ---------------------------------------------------------
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'APPLICANT', true);
+  do $$
+  declare v_n integer;
+  begin
+    assert not public.has_role('66666666-6666-6666-6666-666666666666', 'operator'),
+      'signing up as an operator must not grant the role';
+    assert public.has_role('66666666-6666-6666-6666-666666666666', 'customer'),
+      'the account is a working passenger account while it waits';
+    assert (select count(*) from public.operator_applications) = 1,
+      'an applicant sees their own application and nobody else''s';
+    assert (select status from public.operator_applications) = 'pending',
+      'and it is still waiting';
+
+    -- No UPDATE policy exists, so the row is simply not there to update.
+    -- Postgres reports that as zero rows, not as an error.
+    update public.operator_applications set status = 'approved';
+    get diagnostics v_n = row_count;
+    assert v_n = 0, 'an applicant cannot approve their own application';
+  end $$;
+  select tests.denied(format(
+    $q$insert into public.user_roles (user_id, role) values (%L, 'operator')$q$, :'APPLICANT'));
+  select tests.denied(format(
+    $q$select public.review_operator_application(%L, true)$q$, :'APPLICANT'));
+rollback;
+
+-- An operator is not an admin: deciding applications is admin-only.
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'OP_A', true);
+  do $$
+  begin
+    assert (select count(*) from public.operator_applications) = 1,
+      'an operator sees only their own application';
+  end $$;
+  select tests.denied(format(
+    $q$select public.review_operator_application(%L, true)$q$, :'APPLICANT'));
+rollback;
+
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'ADMIN', true);
+  do $$
+  declare v_row public.operator_applications;
+  begin
+    assert (select count(*) from public.operator_applications) = 3,
+      'an admin sees every application: two already operating, one pending';
+
+    v_row := public.review_operator_application('66666666-6666-6666-6666-666666666666', true);
+    assert v_row.status = 'approved', 'the decision is recorded';
+    assert v_row.decided_at is not null, 'with when it was made';
+    assert v_row.decided_by = '55555555-5555-5555-5555-555555555555', 'and who made it';
+    assert public.has_role('66666666-6666-6666-6666-666666666666', 'operator'),
+      'approving is what grants the operator role';
+  end $$;
+  -- Decided once, decided for good.
+  select tests.denied(format(
+    $q$select public.review_operator_application(%L, false, 'changed my mind')$q$, :'APPLICANT'));
+rollback;
+
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'ADMIN', true);
+  -- A rejection without a reason, and a decision on an account that never applied.
+  select tests.denied(format(
+    $q$select public.review_operator_application(%L, false, '  ')$q$, :'APPLICANT'));
+  select tests.denied(format(
+    $q$select public.review_operator_application(%L, true)$q$, :'PAX1'));
+  do $$
+  declare v_row public.operator_applications;
+  begin
+    v_row := public.review_operator_application(
+      '66666666-6666-6666-6666-666666666666', false, 'No operating licence on file');
+    assert v_row.status = 'rejected', 'the refusal is recorded';
+    assert v_row.decision_note = 'No operating licence on file', 'with the reason the applicant reads';
+    assert not public.has_role('66666666-6666-6666-6666-666666666666', 'operator'),
+      'a rejected applicant is granted nothing';
+  end $$;
+rollback;
+
+-- ---------------------------------------------------------
+-- #38  An admin reads every booking; an operator still does not
+-- ---------------------------------------------------------
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'PAX1', true);
+  select public.create_booking(
+    :'VEHICLE_A', 'Pax One', 'p@e.com', '0833330000',
+    2, current_date + 1, '08:00', 3,
+    '[{"address":"Rank A","type":"pickup"},{"address":"Mall B","type":"dropoff"}]'::jsonb);
+
+  select set_config('request.jwt.claim.sub', :'OP_B', true);
+  do $$
+  begin
+    assert (select count(*) from public.bookings) = 0,
+      'an operator must not see a booking on another operator''s vehicle';
+    assert (select count(*) from public.booking_stops) = 0, 'nor its stops';
+  end $$;
+
+  select set_config('request.jwt.claim.sub', :'ADMIN', true);
+  do $$
+  begin
+    assert (select count(*) from public.bookings) = 1, 'an admin sees every booking';
+    assert (select count(*) from public.booking_stops) = 2, 'and every booking stop';
+  end $$;
+rollback;
+
+-- ---------------------------------------------------------
 -- Role enumeration, anonymous access
 -- ---------------------------------------------------------
 begin;
@@ -291,6 +403,80 @@ begin;
     assert (select count(*) from public.shuttle_routes) = 0, 'anon must read no routes';
     assert (select count(*) from public.profiles) = 0, 'anon must read no profiles';
     assert (select count(*) from public.route_fares) = 0, 'anon must read no fares';
+  end $$;
+rollback;
+
+-- ---------------------------------------------------------
+-- Vehicle images (storage): public read, operator write, own prefix only
+-- ---------------------------------------------------------
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'OP_A', true);
+  -- Operator A may write under their own uuid prefix.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  do $$
+  begin
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'the operator sees their own object';
+  end $$;
+  -- But not under anyone else's, and not into a bucket of their own making.
+  select tests.denied(format(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', %L)',
+    :'OP_B' || '/quantum.jpg'));
+  select tests.denied(
+    'insert into storage.buckets (id, name) values (''mine'', ''mine'')');
+rollback;
+
+begin;
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'PAX1', true);
+  -- A passenger is not an operator, so their own prefix does not help them.
+  select tests.denied(format(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', %L)',
+    :'PAX1' || '/anything.jpg'));
+rollback;
+
+begin;
+  -- Operator A's photo, written by the platform the way an upload would.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  set local role authenticated;
+  select set_config('request.jwt.claim.sub', :'OP_B', true);
+  do $$
+  declare v_n integer;
+  begin
+    -- Operator B can read it — the bucket is public, the listing is public.
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'vehicle images are readable by anyone';
+    -- Deleting it is a no-op rather than an error: the USING clause hides the
+    -- row from the DELETE, so nothing matches.
+    delete from storage.objects where bucket_id = 'vehicle-images';
+    get diagnostics v_n = row_count;
+    assert v_n = 0, 'an operator must not delete another operator''s photo';
+    update storage.objects set name = '22222222-2222-2222-2222-222222222222/stolen.jpg'
+    where bucket_id = 'vehicle-images';
+    get diagnostics v_n = row_count;
+    assert v_n = 0, 'nor move it into their own folder';
+  end $$;
+rollback;
+
+begin;
+  set local role anon;
+  -- Anonymous writers have the grant but match no INSERT policy.
+  select tests.denied(
+    'insert into storage.objects (bucket_id, name) values (''vehicle-images'', ''x/y.jpg'')');
+rollback;
+
+begin;
+  -- A signed-out passenger browsing the fleet still has to see the photos.
+  insert into storage.objects (bucket_id, name)
+  values ('vehicle-images', :'OP_A' || '/quantum.jpg');
+  set local role anon;
+  do $$
+  begin
+    assert (select count(*) from storage.objects
+            where bucket_id = 'vehicle-images') = 1, 'anon must be able to read vehicle images';
   end $$;
 rollback;
 

@@ -1,6 +1,8 @@
 
 export type PaymentMethod = 'cash' | 'prepay';
 export type PaymentStatus = 'not_required' | 'pending' | 'paid';
+/** Hosted checkouts the Edge Functions have an adapter for. */
+export type PaymentProvider = 'paystack' | 'stripe';
 export type RideRequestStatus = 'awaiting' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled';
 
 export interface Vehicle {
@@ -87,6 +89,8 @@ export interface OperatorSettings {
   taxLabel: string;
   pricesIncludeTax: boolean;
   additionalStopFee: number;
+  /** Who takes this operator's card payments. */
+  paymentProvider: PaymentProvider;
 }
 
 export interface RouteStop {
@@ -170,6 +174,24 @@ export interface RideFareAdjustment {
   newTotal: number;
   currency: string;
   reason: string;
+}
+
+export type OperatorApplicationStatus = 'pending' | 'approved' | 'rejected';
+
+/**
+ * One account's request to operate, filed by the sign-up trigger when the form
+ * claims the operator role and decided only by an admin. The operator role is
+ * granted when the application is approved — never at sign-up.
+ */
+export interface OperatorApplication {
+  id: string;
+  userId: string;
+  status: OperatorApplicationStatus;
+  requestedAt: Date;
+  decidedAt?: Date;
+  decidedBy?: string;
+  /** Required on a rejection: the reason the applicant reads. */
+  decisionNote?: string;
 }
 
 export interface RouteFare {

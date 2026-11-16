@@ -9,6 +9,130 @@ Full task plan and review: https://claude.ai/artifact/Rcp1nVDs7WbT8Wt2hUFFaz
 branch `routine/issue-40` → `Dev` · closes #40 · no migration
 
 **Why:** every test in this repo so far checks one layer on its own — the mappers in jsdom, the RLS rules against a bare Postgres, the payment adapters as plain TypeScript. Nothing has ever checked that the layers meet: that a route created in the operator dialog actually appears as a marker on the passenger's map, that the request the passenger submits is the row the operator's queue groups, that the dispatch RPC's state machine lets the operator reach `completed`, and that the passenger is then told. That is the journey the product is, and it now runs in a browser against a real Supabase, so a break between two layers fails a test instead of a customer.
+## 2026-11-10 — #39 Unit tests: pricing parity, role gating, ride request flow
+branch `routine/issue-39` → `Dev` · closes #39 · no migration (tests, plus the two client guards they exposed)
+
+**Why:** the suite had 106 tests and not one of them rendered a component. Everything covered was a pure function — mappers, money, schedules — so the three places where a wrong answer actually reaches a passenger were untested: who gets past the route guards, what the ride request form refuses to send, and whether the price on screen is the price Postgres computed. The last one has no type safety at all behind it: both pricing functions return `jsonb`, so a key renamed in a migration would reach the browser as `undefined` and render as a zero fare. That is now a failing test rather than a support call.
+## 2026-11-09 — #38 Admin view: approve operators, see all bookings and requests
+branch `routine/issue-38` → `Dev` · closes #38 · migration `20261109040509_admin_operator_applications.sql`
+
+**Why:** the `admin` role and its policies have existed since the first migration and nothing used them, which hid a real problem: being an operator was self-granted. The sign-up form sent `role: 'operator'` and `handle_new_user` honoured it, so anyone who picked "Operator" could immediately publish routes, set fares and take passengers' money — 20260906135126 left that in place with a note to move it behind an admin flow. This is that flow. A claim of 'operator' now files an application, the account starts as a working passenger account, and an admin decides. The second half is read access: `bookings_select` and `booking_stops_select` were the only read policies without an admin branch, so an admin could see every ride request and not a single booking.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/components/auth/__tests__/routeGuards.test.tsx` — 9 tests over `ProtectedRoute` and `RoleRoute` with a mocked `useAuth` | The refusals are the point: a signed-out visitor goes to `/auth`, a passenger with no operator role goes to `/` (not to a sign-in page they are already past), and an empty role list is not a pass. Both `loading` branches are pinned separately, because a guard that redirects while the session is still resolving signs a legitimate operator out on every page refresh — roles arrive after the user does. |
+| `src/components/map/__tests__/RideRequestModal.test.tsx` — 10 tests driving the real form through `user-event` | Each assertion checks the passenger is told *and* that `create_ride_request` was never called: no destination, an empty seat count, 51 seats, a missing mobile number. Also that the origin is never offered as a destination, and that a successful submit sends the stop ids the server expects. |
+| `src/lib/priceBreakdown.ts` — `bookingBreakdownRows`, `rideQuoteRows`, `bookingBreakdownReconciles`, `rideQuoteReconciles`, `round2` | The pricing summaries were arithmetic inside JSX (`breakdown.hourlyRate * breakdown.duration`), which is the one kind of code the suite could not reach. The rows are now data — id, label, value, and flags for the rule and the emphasis — so what a passenger reads can be asserted directly. The two `*Reconciles` helpers mirror the SQL's own arithmetic and pin the relationship the rows assume: line items × the recurring multiplier reach the subtotal (or the total, for a tax-inclusive operator), and subtotal + tax is what is paid. |
+| `src/lib/__tests__/priceBreakdown.test.ts` — 20 tests | Both tax directions, extra stops, a recurring booking, a zero-tax operator, a GBP operator, and an unpriced route rendering no rows at all rather than a free ride. Money is asserted through `formatMoney`, not against a literal `"R 400,00"`, so the tests do not pin the test runner's locale. |
+| `src/lib/__tests__/pricingParity.test.ts` — 8 tests that read the keys out of `supabase/migrations/` | Finds the last migration defining `calculate_booking_price()` / `quote_ride_fare()`, walks its `jsonb_build_object(...)` calls taking the even-position literals as keys, and compares that set against what `normaliseBreakdown` / `mapQuote` produce. A key added in SQL and not mapped fails; so does a key the mapper expects and SQL no longer sends. Verified by renaming `taxLabel` in the mapper and watching it fail. The extractor has two tests of its own, so a parse bug cannot pass as parity. |
+| `@testing-library/user-event` (dev) and jsdom stand-ins for `hasPointerCapture`, `scrollIntoView` and `ResizeObserver` in `src/test/setup.ts` | Radix calls into Pointer Events and layout when a Select opens; without the stand-ins a component test fails inside Radix instead of on its own assertion. Guarded on `typeof Element` because the Edge Function tests run under the `node` environment. |
+
+### Fixed
+| Item | Why |
+|---|---|
+| `RideRequestModal` now refuses a seat count outside 1–50 before submitting | **Found by writing the test.** The field has `min={1}`, which a browser only enforces on native form submit — this is a click handler, and `Number("")` is `0`. Clearing the field and submitting sent `passengers: 0` to `create_ride_request`, which refused it with a raw Postgres message. The client now mirrors the RPC's own 1–50 check and says so in the same words. |
+| The fare row reads the seat count off the quote, not off the form | The row rendered `{passengers} × …` from component state beside a subtotal the server had priced for a possibly different seat count. The two can only disagree briefly, but when they do the row contradicts the number under it. `quote.data.passengers` is the count that was actually priced. |
+| Both `Select` triggers in the request form have an `aria-label` | They had a visible `<Label>` with no `htmlFor` and no `id` to point at, so the comboboxes were unnamed to a screen reader — and unaddressable from a test. |
+| `operator_applications` — one row per account that asked to operate, with `requested_at`, the decision, who made it and the reason | `user_id` is unique, which is what makes the sign-up insert and the backfill idempotent. Two check constraints keep the row honest: a pending row carries no decision, and a rejection must carry a note, because a refusal the applicant cannot read a reason for is not a decision. |
+| `review_operator_application(_user_id, _approve, _note)` | SECURITY DEFINER for the same reason `create_booking` is: it is the single path, and it stamps the application and inserts into `user_roles` as one unit, so an approved application and a granted role cannot drift apart. The admin check is explicit and first. Refuses a rejection without a reason, and refuses to re-decide an application that was already decided. |
+| `/admin`, behind `RoleRoute allow={['admin']}` — tabs for **Operators**, **Bookings** and **Ride requests** | The applications tab splits waiting (oldest first, so the longest wait is at the top) from approved and rejected, with approve and a reject dialog. The other two are read-only tables of every booking and every ride request, newest first. |
+| `src/lib/operatorApplications.ts` — `rejectionNoteError`, `groupApplications`, `accountLabel`, `daysWaiting` (+9 tests) | `rejectionNoteError` mirrors the `decision_note` constraint and the RPC's refusal, so the form says no before the round trip does. `accountLabel` falls back to a short id, because a display name is nullable. |
+| `useOperatorApplications`, `useMyOperatorApplication`, `useReviewOperatorApplication`, `useAllBookings`, `useAllRideRequests`, `useProfileSummaries` (+2 mapper tests, suite 106 → 117) | The three admin-wide queries are gated on `isAdmin` as well as RLS, so a passenger's client never issues a query that can only come back empty. |
+| **Your operator application is being reviewed** notice on the passenger home, and the same warning at sign-up | Signing up as an operator no longer grants the role, so without this the applicant lands on a passenger view with no explanation. A rejected applicant is shown the recorded reason. |
+| 11 RLS assertions for the new table and the admin booking read | An applicant cannot approve themselves (no UPDATE policy — asserted as a zero-row no-op, which is what Postgres does), cannot insert their own `user_roles` row, and cannot call the RPC; an operator is not an admin; an admin sees every booking and its stops where an operator sees neither. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `handle_new_user` inserts `customer` always, and files an application when 'operator' was claimed | `raw_user_meta_data` is client-supplied and was already untrusted input — it stopped granting 'admin' in September and no longer grants 'operator' either. The customer role goes in regardless of what was claimed so the account is immediately usable while it waits. |
+| `bookings_select` and `booking_stops_select` gained an admin branch | Required for "see all bookings". Both policies are recreated whole so the end state reads in one place; everything else is unchanged from 20260917120000. |
+| `supabase/tests/10_seed.sql` grants `operator` to both test operators out of band, approves their applications, and adds one account still waiting | The seed relied on `handle_new_user` granting the role from metadata, which was the behaviour this change removes. Operators A and B are approved so the pending list contains only the account that is genuinely waiting. |
+| Header shows an **Admin** link to admins, on desktop and in the mobile sheet | `/admin` is otherwise only reachable by typing the URL. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 117/117 · `npm run build` OK · **database suite green locally**: all 20 migrations replayed from an empty Postgres 16, seed and every RLS assertion passed (`scripts/test-db.sh`).
+
+### Not changed (deliberately)
+- **Existing operators keep working.** The migration backfills an approved application for every account that already holds the `operator` role, noting in `decision_note` that it predates approval rather than inventing an approver. The pending list therefore starts empty and nobody loses work they already have.
+- **The first admin is still a manual grant.** Nothing in the product can create an admin — by design, since `handle_new_user` refuses the claim. Granting it is one `insert into public.user_roles`, now written down in the README. On a project with no admin row, operator applications will queue until someone runs it; that is the one deployment step this change adds.
+- **No revoke path.** An application moves `pending → approved | rejected` and no further, so an approved operator cannot be demoted from this screen. Suspending a live operator has to deal with their routes, fares and rides in flight, which is its own piece of work.
+- **A passenger cannot apply later.** Applications are filed at sign-up only; there is deliberately no INSERT policy on the table, so nothing can be written from a client. "Become an operator" from an existing passenger account is a separate change.
+- **The admin tabs are read-only.** No cancelling a booking or redispatching a ride from `/admin`; the policies allow an admin to do both, but acting on another operator's work needs its own audit trail, as fare corrections got in #57.
+
+---
+
+## 2026-10-06 — #36 Error boundary and error reporting
+branch `routine/issue-36` → `Dev` · closes #36 · no migration
+
+**Why:** a thrown render error took the whole page to white, and nobody found out. There was no boundary, so one bad row in a list ended the session; and no reporting, so every crash a passenger hit was invisible unless they said something. Both are now covered, and reporting stays completely inert until a DSN is set — the repo, CI and a developer with no Sentry account behave exactly as before.
+## 2026-10-05 — #35 Code-split by route; target < 300 kB initial JS
+branch `routine/issue-35` → `Dev` · closes #35 · no migration (build and client only)
+
+**Why:** the whole app arrived as one 1,034 kB script (302 kB gzipped) before anything appeared on screen. A passenger tapping a link on a phone paid for the operator dashboard, both maps and every form before the sign-in box could render — and Leaflet, a third of that weight, is needed by exactly two screens. Every page is now its own chunk, both maps are loaded when they are first shown, and the first load is **165 kB gzipped across six chunks instead of 302 kB in one**. A budget check in CI keeps it that way, because a bundle only has to be split once to be un-split by the next stray import.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/components/layout/ErrorBoundary.tsx` wrapping `<App />` in `main.tsx` | A render error now shows "Something went wrong", a **Reload the page** button and a link home instead of a blank screen. Deliberately built from `Card` and `Button` only, with no router, query-client or auth dependency: one of those failing is exactly how we get here, so the fallback must not need them. |
+| `src/lib/errorReporting.ts` — crash reporting to Sentry's **envelope endpoint** over plain `fetch` | The DSN is all Sentry needs to accept an event, so there is no SDK in the bundle: 0 kB added to an initial payload that #35 is trying to get under 300 kB. `parseDsn` turns the DSN into the ingest URL (self-hosted path prefixes included) and returns null for anything unusable, which leaves reporting off rather than throwing at start-up. |
+| Global `error` and `unhandledrejection` handlers, registered by `initErrorReporting()` | The boundary only sees render errors. An event handler that throws or a promise nobody awaited were the other two silent failures, and they are tagged by mechanism so they can be told apart in Sentry. |
+| A stack parser (Chrome and Firefox formats) producing Sentry frames, dependencies marked `in_app: false` | A report whose stack is one opaque string is barely worth having. Frames arrive oldest-first, which is the order Sentry wants and the reverse of how engines print them. |
+| Reference id on the fallback card when an event was sent | The person looking at the broken page can quote the exact event, instead of "it broke this morning". |
+| `VITE_SENTRY_DSN`, `VITE_SENTRY_ENVIRONMENT`, `VITE_SENTRY_RELEASE` — in `.env.example`, the README environment table, an **Error reporting** section and `vite-env.d.ts` | All three optional. Without the DSN nothing is sent and no request is made. |
+| 22 tests (`errorReporting.test.ts`, `ErrorBoundary.test.tsx`); suite 106 → 128 | Cover DSN parsing, URL scrubbing, event and envelope shape, dedupe, the cap, a failing transport, and the boundary rendering its fallback and reporting the crash. |
+| `src/components/layout/LazyFallback.tsx` — `PageFallback` and `PanelFallback` | A `Suspense` boundary that renders nothing collapses the layout and the page jumps when the chunk lands. `PanelFallback` takes the box the real component will fill (the map's own `h-[min(420px,55dvh)] sm:h-[480px]`), so the map tab looks the same before and after. Both announce themselves with `role="status"` and an `sr-only` label, since a spinner alone says nothing to a screen reader. |
+| `src/lib/mapDefaults.ts` — `DEFAULT_MAP_CENTER`, `DEFAULT_MAP_ZOOM` | These two constants lived in `src/lib/leaflet.ts`, next to its `import L from "leaflet"`. `src/lib/routeStops.ts` — whose own header says it exists so the rules are testable "without a map" — imported one of them, which pulled Leaflet into every chunk that touched those pure helpers. Splitting the file is what makes the lazy map boundary actually hold. |
+| `scripts/bundle-budget.mjs` and `npm run check:bundle`, run in CI after `Build` | Reads `dist/index.html`, adds up the entry script and every `modulepreload` next to it, prints each chunk, and exits non-zero over **200 kB gzipped**. The split is only worth having if it is enforced: one top-level `import` of a page in a shared module silently restores the single bundle, and nothing else would notice. |
+| `scripts/__tests__/bundleBudget.test.mjs` — 11 tests | The script decides whether CI passes, so its rule is tested: entry first then preloads, stylesheets and `prefetch` links excluded, a chunk listed twice counted once, an un-built HTML file reporting nothing, the base path stripped, raw and gzip totals, and OK/EXCEEDED exactly at the budget. A parser that matched nothing would report 0 kB and always pass. |
+| `build.rolldownOptions.output.codeSplitting` groups in `vite.config.ts` — `react`, `supabase`, `vendor` | Vendor chunks as the issue suggested: the dependencies that change on a dependency bump are separated from the app code that changes every deploy, so a release no longer invalidates 1 MB of cache. Each group is tagged **`$initial`** — without that, a `node_modules` group sweeps Leaflet out of the lazy map chunk and into a chunk the entry has to preload, quietly undoing the split. |
+| `build.chunkSizeWarningLimit: 300` | Set **after** the split, as the issue asked, not instead of it: the build is clean at 300 kB today, so the warning now means something. The largest chunk is 197 kB. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `src/App.tsx` — all seven pages are `React.lazy`, under one `Suspense` inside `AuthProvider` | The entry now holds the shell, the session and the toasters and nothing else. The boundary sits inside `AuthProvider` so the session is still resolved while a page downloads, and `ProtectedRoute` / `RoleRoute` still decide before a chunk is fetched — an operator-only chunk is not requested by someone without the role. |
+| `src/components/customer/CustomerView.tsx` — `RoutesMapPanel` is lazy | Leaflet lands when the Routes tab is first shown. It is the default tab, so this is a second request rather than a saving for a passenger who opens the map — but the sign-in page, My rides and fleet booking no longer pay for it. |
+| `src/components/operator/RouteManagement.tsx` — `RouteStopsMap` is lazy | The stop editor is inside a dialog. The dashboard chunk no longer carries a map that only opens when an operator edits a route. |
+| `src/lib/leaflet.ts` now also owns `leaflet/dist/leaflet.css`, moved out of `src/main.tsx` | The stylesheet was global, so it shipped in the initial CSS for every page. It now travels with the chunk that draws a map: initial CSS 80.7 kB → 65.9 kB, with the remaining 14.8 kB alongside the map. |
+| `README.md` — new **Bundle size** section, `check:bundle` in Scripts, `layout/` in the project layout | Says where the boundaries are and what to do when the next heavy dependency arrives: lazy-load it, do not raise the budget. |
+
+### Verification
+| Command | Result |
+|---|---|
+| `npm ci --legacy-peer-deps` | OK |
+| `npm run lint` | 0 errors, 8 pre-existing shadcn warnings |
+| `npm run typecheck` | clean |
+| `npm test` | **117/117** (12 files); 11 new in `scripts/__tests__/bundleBudget.test.mjs`, suite 106 → 117 |
+| `npm run build` | OK, **no chunk-size warning at a 300 kB limit** |
+| `npm run check:bundle` | 165.26 kB gzipped (560.69 kB raw) over 6 chunks — under the 200 kB budget |
+
+Before and after, as the build reports them:
+
+| | Initial JS, raw | Initial JS, gzipped | JS chunks built | Initial CSS |
+|---|---|---|---|---|
+| Before | 1,034.14 kB in one chunk | 301.97 kB | 1 | 80.73 kB |
+| After | 560.69 kB over 6 chunks | **165.26 kB** | 25 | 65.92 kB |
+
+Largest chunks after the split: `supabase` 196.7 kB, `react` 189.6 kB, `vendor` 174.8 kB (all initial); `RoutePolyline` 160.4 kB — Leaflet and `react-leaflet` — and `Operator` 65.3 kB, both lazy.
+
+The built app was then driven in headless Chromium against `npm run preview`, since a lazy route that fails only fails at runtime: `/` redirects to `/auth` and renders the sign-in form, `/forgot-password` and an unknown path render their own pages, each fetching its own chunk, **no Leaflet chunk is requested on any of them**, and the console is clean. The signed-in surfaces — the map tab and `/operator` — were not driven: both need a real Supabase session, which this environment has no key for. Their chunks are the same `React.lazy` boundary as the three that were exercised.
+
+### Not changed (deliberately)
+- **The target reads as "no chunk over 300 kB", which is met; under 300 kB *raw* for the whole first load is not reachable** and is not attempted. React and `react-dom` are 189.6 kB and `@supabase/supabase-js` 196.7 kB, and both are needed before the first paint: the router needs React, and `AuthProvider` asks Supabase for the session to decide whether to show a page or the sign-in box. That is 386 kB raw before a line of our own code. The gzipped figure the issue quotes alongside its target — 285 kB then, 302 kB when this started — is now 165 kB.
+- **The budget is set at 200 kB gzipped, not the issue's 300 kB.** A budget above where the build already sits can never fail; 200 kB leaves room for a feature without leaving room for the single-bundle regression. Raising it should be a deliberate edit to `scripts/bundle-budget.mjs`, visible in a diff.
+- **No lazy loading of the toasters, the tooltip provider or `QueryClientProvider`.** They are mounted at the root and a toast can fire during the first render, so a boundary around them buys a few kB for a real risk of a dropped message.
+- **`@supabase/supabase-js` is not trimmed.** Importing `@supabase/postgrest-js` and the auth client separately rather than the umbrella package would cut the largest initial chunk, but it changes how every hook in the app reaches the database and deserves its own issue.
+- **No route prefetching.** Hinting the next likely chunk on hover or after idle would hide the second request, but it also spends a passenger's data on a page they may not open. Worth measuring before adding.
+- Noticed while in these files, left alone: the initial `vendor` chunk is 174.8 kB and nothing here says what is in it — splitting `react-router`, `@tanstack/react-query` and the Radix primitives apart would make a regression in any one of them legible, but it adds requests and is a tuning question, not this issue's.
+
+---
+
+## 2026-10-02 — #34 Vehicle image upload to Supabase Storage
+
+branch `routine/issue-34` → `Dev` · closes #34 · migration `20261002041042_vehicle_images_storage.sql`
+
+**Why:** the vehicle form asked an operator to paste an "Image URL", so every photo in the fleet lived on somebody else's host — a Facebook CDN link, a WhatsApp image, a free image host — and broke when that host did, with nobody to notice but the passenger looking at a blank card. Photos now go into a `vehicle-images` bucket this project owns. The bucket is public to read, because the listing is public and a passenger browsing shuttles is often not signed in yet; writing is confined to operators, each under a folder named after their own user id, so one operator cannot overwrite or delete another's photos. Size and type are capped on the bucket itself — the check in the browser is a courtesy, not the control.
 
 ### Added
 | Item | Why |
@@ -21,6 +145,47 @@ branch `routine/issue-40` → `Dev` · closes #40 · no migration
 | `.github/workflows/e2e.yml` — `workflow_dispatch` only, uploads the HTML report | What #40 asks for: manual until it has proved itself, because a Supabase stack plus a browser is minutes, not the seconds the `verify` job takes. |
 | `tsconfig.e2e.json`, wired into `npm run typecheck` | `tsconfig.app.json` only covers `src`, so without this the suite would be the one unchecked TypeScript in the repo — and it is `strict`, which the app config is not. |
 | `[auth]` / `[auth.email]` in `supabase/config.toml` | Pins what the local stack must do for the journey to run: sign-up returns a session, and the dev server's origin is an allowed redirect. These are the CLI's own defaults, pinned so the test does not depend on them; the hosted project's auth settings live in the dashboard. |
+| `supabase/migrations/20261002041042_vehicle_images_storage.sql` — the `vehicle-images` bucket (public, 5 MB, JPEG/PNG/WebP/AVIF) and four policies on `storage.objects` | Public SELECT; INSERT/UPDATE/DELETE only for a caller who holds the `operator` role and only where the first path segment is their own `auth.uid()`. UPDATE carries the same test in `WITH CHECK` as in `USING`, so an operator cannot move an object into their own folder to claim it. |
+| `src/lib/vehicleImage.ts` — bucket name, limits, `imageFileError`, `slugifyFileName`, `vehicleImagePath`, `storagePathFromPublicUrl`, `orphanedImages` | Pure rules, so the path the policy checks and the URL parsing are testable without a session. The upload path is built from the signed-in user id, never from anything the form supplies. |
+| `src/hooks/useVehicleImage.ts` — `useUploadVehicleImage` and `discardVehicleImages` | Upload returns the public URL that goes into `vehicles.image`. The discard is best-effort and silent: a leftover object is not worth an error toast, and URLs hosted elsewhere are never touched. |
+| `src/components/operator/VehicleImageField.tsx` | Pick, preview, replace, remove — with the accepted formats and size limit stated next to the button rather than discovered by a rejected upload. |
+| `src/lib/__tests__/vehicleImage.test.ts` — 16 cases | The limits match the bucket, the extension follows the real MIME type and not the name the operator gave, a re-upload of the same filename cannot collide, and a third-party URL is never offered up for deletion. |
+| Storage assertions in `supabase/tests/20_rls.sql`, and a `storage` schema in `supabase/tests/00_shim.sql` | The new policies are only as good as the replay that exercises them: an operator writes under their own prefix and nowhere else, a passenger cannot write at all even under their own id, an operator cannot create a bucket, operator B can read A's photo but deleting or renaming it moves zero rows, and anon can read. |
+
+### Removed
+| Item | Why |
+|---|---|
+| `console.log('Opening booking modal for vehicle:', …)` in `src/components/customer/VehicleCard.tsx` | The debug log the issue asks to clear. `src/hooks/useBookingCalculator.ts`, which the issue names, no longer exists — pricing moved into Postgres, and the hook went with it. |
+| The "Image URL (optional)" text field and its `z.string().url()` rule | Replaced by the upload. A pasted link cannot be size- or type-checked, cannot be kept alive, and was the only field in the form whose value the app did not control. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `VehicleManagement` holds `image` in state (like `features`) rather than in the form schema | The value now comes from an upload, not from typing, so it is not something the resolver validates. |
+| Closing the vehicle dialog cleans up | Photos uploaded during the edit that the saved row does not reference — a replacement, or an upload then Cancel — are deleted from the bucket, as is the photo a saved vehicle has moved off. Deleting a vehicle deletes its photo. Without this, every replaced photo would stay in the bucket forever with no screen that could find it. |
+
+### Verification
+`npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **177/177** (16 of them new here) · `npm run build` OK · migration replay + RLS suite green against a throwaway `postgres:16`: 22 migrations applied from an empty database, every assertion passed, and the bucket row and all four policies verified present afterwards.
+
+### Not changed (deliberately)
+- **`src/integrations/supabase/types.ts` is untouched.** The generated types cover the `public` schema; this change adds no table, column or function there — Storage is reached through `supabase.storage`, which is typed by the client library.
+- **No image resizing or transformation.** Supabase's image transformation is a paid add-on; the 5 MB cap keeps the listing usable without it. Worth revisiting if operators start uploading phone-camera originals.
+- **Existing third-party image URLs are left as they are.** They still render, and the field lets an operator replace one with an upload when they next edit the vehicle. Nothing deletes a URL this app does not host.
+- Noticed while in the file, left alone: the operator fleet card prints `${v.pricePerHour}` with a hard-coded `$` instead of `formatMoney`, and the availability badge only renders when a vehicle has a photo. Neither is this issue.
+
+---
+
+## 2026-09-30 — #32 Operator: block Complete on unpaid prepay; mark cash collected
+branch `routine/issue-32` → `Dev` · closes #32 · migration `20260930041122_block_complete_on_unpaid_prepay.sql`
+
+**Why:** completing a ride is what tells the operator the fare is earned, and there is no refund or chase-up path in the product — so a **prepay** row that reached `completed` while `payment_status` was still `pending` was a fare nobody would ever collect, and nothing anywhere refused it. The mirror of that rule is **cash**: it is handed over on board, so completing is precisely the moment the money is recorded. `dispatch_ride_request()` already did the cash half for ride requests, but bookings had neither half and the operator UPDATE policy on `bookings` lets the vehicle's owner write any status they like. Both rules now live in a trigger on both tables, so a raw PostgREST `UPDATE` obeys them too — not only the RPC and not only the UI.
+
+### Added
+| Item | Why |
+|---|---|
+| `settle_payment_on_complete()` + `trg_bookings_settle_payment` / `trg_ride_requests_settle_payment` (BEFORE UPDATE) | One function, two tables, keyed off `tg_table_name` for the wording. Refuses the transition into `completed` when `payment_method = 'prepay'` and `payment_status <> 'paid'`; sets `payment_status = 'paid'` on completing a cash row. Only the transition matters, so re-saving an already-completed row re-runs neither rule. Both fire after the per-table customer guard (trigger order is alphabetical, `s` follows `g`), so the guard still judges the caller's own diff rather than the `payment_status` this one writes. |
+| `src/lib/settlement.ts` — `isPrepayUnpaid`, `collectsCashOnComplete`, `completeBlockedReason`, `completeBlockedHint`, `cashCollectedPrompt` (+14 tests, suite 106 → 120) | The refusal text is copied from the SQL exception, so a stale page and the database give the operator the same answer instead of two different ones. |
+| `CompleteRideButton` — shared by the passenger queue and booking management | Disabled with the reason as its title and an `awaiting payment` hint beside it when prepay is unpaid; otherwise a **Cash collected?** dialog naming the amount, whose action reads **Cash collected · Complete**. The operator is asserting they hold the money, because completing records it. |
 
 ### Changed
 | Item | Why |
@@ -40,6 +205,76 @@ branch `routine/issue-40` → `Dev` · closes #40 · no migration
 - **Stops are placed with the "Add stop" button, not by clicking the map.** The button runs the same `addStopAt` the map click runs, with a seeded coordinate; a synthetic click on a Leaflet pane would test Leaflet, not this app.
 - **Payment stays on "cash on board"** and no fare is set on the route, so the journey asserts "fare payable on board". Prepay needs a provider's hosted checkout page, which belongs with #31/#32 and cannot be driven in a test.
 - **Noticed, not fixed:** `AuthContext` clears `loading` before roles have loaded, so a direct visit to `/operator` straight after sign-in can bounce to `/` before `RoleRoute` sees the operator role. The test clicks the header link, which is what a person does; the race is worth its own issue.
+| `PassengerQueue` and `BookingManagement` **Complete** buttons → `CompleteRideButton` | Both surfaces had a bare Complete that fired immediately. Bookings had no payment gating of any kind. |
+| `README.md` — feature-table row, and a paragraph under **Payments** | The two rules are now part of what the platform promises, and the paragraph says which function enforces them. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 120/120 (12 files) · `npm run build` OK.
+
+Also replayed all 18 migrations from an empty Postgres 16 against a Supabase shim, then asserted the behaviour directly: an unpaid prepay booking and an unpaid prepay ride are both refused (through a raw `UPDATE` *and* through `dispatch_ride_request`); the same rows complete once paid; completing a cash booking and a cash ride sets `payment_status = 'paid'`; cancelling an unpaid prepay row still works and leaves `payment_status` alone; and re-saving a completed row is a no-op for both rules. Eight assertions, all passed. The scratch cluster was local only — no migration, shim or script is committed here, since CI's `database` job is #41's work.
+
+### Not changed (deliberately)
+- **No `types.ts` change.** The trigger function is revoked from `anon`/`authenticated` and exposes no new table, column or RPC, so the hand-written types are already correct.
+- **Admins and `service_role` are not exempt.** The money either arrived or it did not, and neither role can make it arrive by asking. To close an unpaid prepay row: cancel it, or mark the payment paid first — which for a real payment is the webhook's job.
+- **A prepay row that is `not_required` is treated as unpaid, not waived.** On a prepay row that value is a data fault; reading it as a waiver would turn the fault into a free ride.
+- **No operator-side "mark prepay as paid".** Letting an operator declare a provider payment received is exactly the hole this closes. The passenger's own way to pay is #31.
+- **No `Complete` for a prepay booking whose passenger never pays.** The operator's only exit is Cancel. A partial-settlement or write-off path is a real gap but it is an owner decision, not this issue.
+
+---
+
+## 2026-09-29 — #31 Passenger: "Pay now" for pending prepay rides and bookings
+branch `routine/issue-31` → `Dev` · closes #31 · no migration (the SQL and both Edge Functions landed with #30)
+
+**Why:** the server half of prepay has been finished since #30 — `create-checkout-session` reads the amount from the row, `payment-webhook` flips `payment_status` — but a passenger who chose **pay in advance** had no way to reach it. The ride sat `prepay · pending` forever. This is the passenger's half: a **Pay now** button on anything that still owes money, and honest handling of the page they land back on. The client still never names a price; it posts only what it wants to pay for.
+
+### Added
+| Item | Why |
+|---|---|
+| `src/lib/payments.ts` — `canPayNow`, `payNowLabel`, `readPaymentReturn`, `stripPaymentReturn`, `paymentReturnMessage`, `checkoutErrorMessage` (+13 tests, suite 106 → 119) | `canPayNow` mirrors `start_payment()`'s refusals exactly — prepay, `pending`, an amount above zero, not cancelled — so the button is never shown for something the RPC would reject. The return URL is parsed here, not in a component, because providers disagree about its shape (Paystack sends `reference` *and* `trxref`). |
+| `src/hooks/usePayments.ts` — `useStartCheckout`, `usePaymentByReference`, `usePaymentReturn` | `useStartCheckout` posts `{ targetType, targetId }` and nothing else; the amount and the provider stay server-side. `usePaymentByReference` resolves a reference against the passenger's **own** rows (RLS, plus an explicit `customer_id` filter) and re-checks five times over ~12 s, because the webhook can land after the redirect. |
+| `PayNowButton` on every unpaid prepay ride and fleet booking in **My rides** | The label carries the amount (`formatMoney`, the row's own currency) so the passenger sees the figure before leaving the app, and the spinner stays up through the redirect. A failure surfaces the Edge Function's own message ("This booking is already paid"), not an HTTP code. |
+| Return-URL handling in `CustomerView`: toast, tab switch to **My rides**, refetch | The passenger comes back to the ride they just paid for rather than the map. Paid → success toast and both lists refetch. |
+| README: **Pay now** in the feature table, and what `PAYMENT_CALLBACK_URL` has to point at | The callback must land on the passenger home page, because that is where the reference is read. Getting it wrong is silent otherwise. |
+
+### Changed
+| Item | Why |
+|---|---|
+| `BookingModal` and `RideRequestModal` render their pricing summaries from the shared row builders | One source of truth for what the summary contains, and the same classes as before — the rule and the bold total now come from flags on the row rather than from duplicated conditionals. No visual change intended. |
+| `normaliseBreakdown` exported from `src/hooks/useBookings.ts` | The parity test needs the mapper it is checking. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **153/153** (106 → 153, +47) · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No E2E and no new SQL.** The browser-level flow is #40 (Playwright) and the database rules are #41, already merged; this issue is the Vitest layer between them.
+- The bundle is still one 1 MB chunk — the build's own warning. That is #35, which has an open PR.
+- `bookingBreakdownReconciles` is **not** called at runtime. It exists to pin the arithmetic the display assumes; making it a render-time assertion would mean deciding what to show a passenger when the server's own numbers disagree, which is a product question, not a test one.
+- The "no fare" branch of `quote_ride_fare()` omits `pricesIncludeTax` where the priced branch includes it. Harmless — `mapQuote` defaults it to `false` and nothing is displayed without a fare — and the parity test compares against the union of the branches, so it does not fail on it. Worth tidying in whichever migration next touches that function.
+| Reported URLs are stripped of query string, hash and credentials | **Privacy.** Supabase recovery links carry `access_token` in the hash, and `/reset-password` is a page that can crash. A crash report is not a place to leak a session token. Only the path, the error and the component stack are sent; no user id, email or mobile number. |
+| At most 20 events per page load, and the same error from the same frame only once | A render loop would otherwise send thousands of identical events. Dedupe is on message plus the first stack frame. |
+| Every send failure is swallowed (`fetch` is fire-and-forget with `keepalive`) | A reporter that throws into the page it is reporting on is worse than no reporter. `keepalive` so the last event still leaves a tab that is closing. |
+
+### Verification
+`npm ci --legacy-peer-deps` OK · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` **128/128** · `npm run build` OK (bundle unchanged at 1,039.13 kB / 304 kB gzip — no dependency added).
+
+### Not changed (deliberately)
+- **No `@sentry/react` dependency.** The SDK adds roughly 30–40 kB gzipped to the initial bundle for session replay, tracing and breadcrumbs we are not using, while #35 is actively trying to get initial JS under 300 kB. The envelope endpoint is Sentry's documented public ingest API; events land in the same project, with stack frames and mechanism. If breadcrumbs or tracing are wanted later, swapping `reportError` for the SDK touches one module.
+- **No per-route boundaries.** One top-level boundary was what the issue asked for. Per-route boundaries would keep the header and navigation alive around a broken panel, which is nicer but a separate change.
+- `console.error` in `src/pages/NotFound.tsx` and `src/context/AuthContext.tsx` left alone — a 404 and a failed role load are handled conditions that log deliberately, not the debug noise the issue is about.
+- **No user context on events.** Attaching the signed-in user id would make triage easier and is a privacy decision for the owner, not a side effect of this issue.
+| `CustomerView`'s tabs are now controlled (`value`/`onValueChange`) instead of `defaultValue` | The only way to open **My rides** on a payment return without remounting the panel. |
+| The ride and booking cards' single action button became a `flex-wrap` row | **Pay now** and **Cancel** can both apply to the same ride; they wrap on a phone instead of overflowing. |
+| The payment keys are stripped from the address bar with `history.replaceState` as soon as they are read | A refresh would otherwise replay the toast, and the reference would sit in the URL bar and in the browser history. |
+
+### Verification
+`npm ci --legacy-peer-deps` · `npm run lint` 0 errors (8 pre-existing shadcn warnings) · `npm run typecheck` clean · `npm test` 119/119 (12 files) · `npm run build` OK.
+
+### Not changed (deliberately)
+- **No SQL, and no `types.ts` edit.** No new table, column or function: `start_payment`, `mark_payment_paid` and the provider-reference columns all exist from #30, and the hand-written types already cover them.
+- **The provider is still chosen server-side** from the `PAYMENT_PROVIDER` secret, not per operator. The issue's comment suggests reading `payment_provider` from `operator_settings`, but that column does not exist and adding it is the per-operator-provider decision in #29 (owner's call, plus #45 for the second adapter). The Edge Function echoes `provider` back, so a per-operator choice later changes no client code.
+- **A cancelled checkout and a webhook still in flight are reported the same way**, because the browser genuinely cannot tell them apart: Paystack returns the passenger to the same URL either way, and verifying the transaction means a server call. The message is true of both and invites another attempt. An explicit `?payment=cancelled` is honoured for a future adapter that sends one.
+- **No "Pay now" on a prepay ride with no fare yet** (`total_price` null — the route had no fare configured). The RPC refuses it and tells them to pay the driver, which the card already says.
+- **No receipt, and no refund.** Both belong with #32 and a provider refund call.
 
 ---
 
