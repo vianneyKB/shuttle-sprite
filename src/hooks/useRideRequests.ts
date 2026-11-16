@@ -151,6 +151,27 @@ export const useOperatorRideRequests = () => {
   });
 };
 
+/**
+ * Every ride request on the platform, newest first, in every status.
+ * `ride_requests_select` only widens past your own rides and your own routes
+ * for an admin.
+ */
+export const useAllRideRequests = () => {
+  const { user, isAdmin } = useAuth();
+  return useQuery({
+    queryKey: ["ride_requests", "all"],
+    enabled: !!user && isAdmin,
+    queryFn: async (): Promise<RideRequest[]> => {
+      const { data, error } = await supabase
+        .from("ride_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return ((data ?? []) as unknown as DbRideRequest[]).map(mapRideRequest);
+    },
+  });
+};
+
 export const usePassengerQueue = () =>
   useQuery({
     queryKey: ["passenger_queue"],

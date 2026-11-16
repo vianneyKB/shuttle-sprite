@@ -1,15 +1,26 @@
-import React from "react";
+import React, { Suspense, lazy } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Map, Car, List } from "lucide-react";
-import { RoutesMapPanel } from "./RoutesMapPanel";
 import { VehicleSearch } from "./VehicleSearch";
 import { VehicleList } from "./VehicleList";
 import { MyRides } from "./MyRides";
 import { BookingModal } from "./BookingModal";
 import { useAppContext } from "@/context/AppContext";
+import { OperatorApplicationNotice } from "./OperatorApplicationNotice";
+import { usePaymentReturn } from "@/hooks/usePayments";
+import { PanelFallback } from "@/components/layout/LazyFallback";
+
+/** Leaflet is a third of the bundle and only this tab needs it. */
+const RoutesMapPanel = lazy(() =>
+  import("./RoutesMapPanel").then((m) => ({ default: m.RoutesMapPanel }))
+);
 
 export const CustomerView: React.FC = () => {
   const { state } = useAppContext();
+  // A passenger coming back from a checkout page is told what happened and
+  // lands on the ride the payment belongs to, not on the map.
+  const payment = usePaymentReturn();
+  const [tab, setTab] = React.useState(payment.isReturn ? "rides" : "map");
 
   return (
     <section className="space-y-6 sm:space-y-8">
@@ -22,7 +33,9 @@ export const CustomerView: React.FC = () => {
         </p>
       </header>
 
-      <Tabs defaultValue="map" className="w-full">
+      <OperatorApplicationNotice />
+
+      <Tabs value={tab} onValueChange={setTab} className="w-full">
         <TabsList className="grid w-full grid-cols-3 mb-6 h-auto min-h-11">
           <TabsTrigger value="map" className="flex items-center gap-1.5 text-xs sm:text-sm">
             <Map className="w-4 h-4" /> Routes
@@ -36,7 +49,16 @@ export const CustomerView: React.FC = () => {
         </TabsList>
 
         <TabsContent value="map">
-          <RoutesMapPanel />
+          <Suspense
+            fallback={
+              <PanelFallback
+                className="h-[min(420px,55dvh)] sm:h-[480px]"
+                label="Loading the routes map…"
+              />
+            }
+          >
+            <RoutesMapPanel />
+          </Suspense>
         </TabsContent>
 
         <TabsContent value="book" className="space-y-8">
